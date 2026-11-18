@@ -40,6 +40,7 @@ Backward compatible with 1.0 and legacy 0.x (migrated on read). Unknown fields a
 - **TextBlock** `{type: heading|paragraph|li, level, list: bullet|ordered, indent 0-3, align, runs}`.
 - **TableBlock** `{type:"table", header, rows: [[cell{runs}]]}`; rows are padded rectangular on read.
 - **ImageBlock** `{type:"image", asset, w 5-100, align, caption runs}`; asset stored in `assets/`.
+  Ixtiyoriy joylashuv (1.1 ichida, eski o‘quvchilar e’tiborsiz qoldiradi): `wrap` = `left|right` (matn o‘rab oladi) | `behind|front` (matn ortida/ustida; `x` = kontent kengligining %, `y` = px) | yo‘q = o‘z qatorida.
 - Readers reject major > 1, path traversal, zip bombs, ZIP64/encrypted entries.
 
 ### Board pages (Stage 3, no format change)

@@ -1,0 +1,25 @@
+const {chromium}=require('/opt/npm-tools/node_modules/playwright');
+const SHOT=process.argv[2]||'/home/claude/fur-platform/docs/shots8';require('fs').mkdirSync(SHOT,{recursive:true});
+let pass=0,fail=0;const ok=(n,c,x='')=>{c?pass++:fail++;console.log((c?'PASS ':'FAIL ')+n+(x?'  '+x:''));};
+(async()=>{
+const b=await chromium.launch();const ctx=await b.newContext({viewport:{width:1100,height:900}});ctx.setDefaultTimeout(15000);
+const pg=await ctx.newPage();const errs=[];pg.on('pageerror',e=>errs.push(e.message));
+await pg.goto('http://localhost:8765/');await pg.waitForSelector('.empty');
+await pg.setInputFiles('#file',['/home/claude/imp/IELTS Task 1 Introduction.fur','/home/claude/imp/test.docx']);await pg.waitForFunction(()=>__fur.S.metas.length===2,null,{timeout:20000});
+const pdfId=await pg.evaluate(()=>__fur.S.metas.find(m=>m.boards===9).id);
+await pg.evaluate(i=>__fur.openDoc(i),pdfId);await pg.waitForSelector('.docv');await pg.waitForSelector('.pcell');await pg.waitForTimeout(800);
+ok('to‘r ko‘rinishda 9 ta sahifa bir vaqtda',await pg.locator('.pcell').count()===9);
+const vis=await pg.evaluate(()=>[...document.querySelectorAll('.pcell')].filter(c=>{const r=c.getBoundingClientRect();return r.bottom<=innerHeight&&r.top>=0}).length);ok('ekranda ko‘rinadigan sahifalar soni ≥6',vis>=6,String(vis));
+const painted=await pg.evaluate(()=>{const c=document.querySelector('.pcell canvas');const d=c.getContext('2d').getImageData(0,0,c.width,c.height).data;let n=0;for(let i=0;i<d.length;i+=4)if(d[i]<240||d[i+1]<240)n++;return n});ok('kichik rasmlar haqiqatan chizilgan',painted>500,String(painted));
+await pg.screenshot({path:SHOT+'/to-r-9-sahifa.png'});
+await pg.locator('.pcell').nth(4).click();await pg.waitForSelector('#editor');ok('sahifani bosish tahrirga olib kiradi (5/9)',(await pg.locator('.pgno').innerText())==='5/9');
+await pg.click('[data-act=pages]');await pg.waitForSelector('.pcell');ok('orqaga to‘rga qaytadi',await pg.locator('.pcell').count()===9);
+await pg.locator('.pcell').nth(2).hover();await pg.click('.pcell:nth-child(3) [data-sa^=down]');await pg.waitForTimeout(400);ok('to‘rda sahifani siljitish',await pg.locator('.pcell').count()===9);
+await pg.click('[data-act="pview:list"]');await pg.waitForSelector('.plist2');ok('eski ro‘yxat ko‘rinishi saqlangan',await pg.locator('.plist2 .pg').count()===9);
+await pg.click('[data-act="pview:grid"]');await pg.waitForSelector('.pcell');
+await pg.click('[data-act=back]');await pg.waitForSelector('.grid');
+const docxId=await pg.evaluate(()=>__fur.S.metas.find(m=>m.docs===2).id);await pg.evaluate(i=>__fur.openDoc(i),docxId);await pg.waitForSelector('.pcell');await pg.waitForTimeout(500);
+const sc=await pg.evaluate(()=>{const p=document.querySelector('.pcell.document .pp-paper');return p?p.style.transform:''});ok('hujjat sahifasi kichraytirib ko‘rsatiladi',/scale/.test(sc),sc);
+await pg.screenshot({path:SHOT+'/to-r-hujjat.png'});
+ok('xatolar yo‘q',errs.length===0,errs.join('|'));
+console.log('\n'+pass+' o‘tdi, '+fail+' yiqildi');await b.close();process.exit(fail?1:0);})();

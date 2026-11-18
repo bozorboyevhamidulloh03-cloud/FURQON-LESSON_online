@@ -7,7 +7,7 @@ const SRV='ws://localhost:18883';const sleep=ms=>new Promise(r=>setTimeout(r,ms)
 (async()=>{
 await sleep(500);
 const b=await chromium.launch();const errs=[];
-const mk=async(vp,extra={})=>{const c=await b.newContext({viewport:vp,...extra});c.setDefaultTimeout(15000);const p=await c.newPage();p.on('pageerror',e=>errs.push(e.message));p.on('console',m=>{if(m.type()==='error')errs.push(m.text())});await p.goto('http://localhost:8765/');return p;};
+const mk=async(vp,extra={})=>{const c=await b.newContext({viewport:vp,...extra});await c.addInitScript(()=>{try{localStorage.setItem('fur.pview','list')}catch{}});c.setDefaultTimeout(15000);const p=await c.newPage();p.on('pageerror',e=>errs.push(e.message));p.on('console',m=>{if(m.type()==='error')errs.push(m.text())});await p.goto('http://localhost:8765/');return p;};
 const T=await mk({width:1280,height:800});await T.waitForSelector('.empty');
 await T.setInputFiles('#file',['/home/claude/imp/IELTS Task 1 Introduction.fur']);await T.waitForFunction(()=>__fur.S.metas.length===1,null,{timeout:20000});
 await T.evaluate(()=>__fur.openDoc(__fur.S.metas[0].id));await T.waitForSelector('.docv');

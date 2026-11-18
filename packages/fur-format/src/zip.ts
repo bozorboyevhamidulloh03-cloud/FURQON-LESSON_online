@@ -1,7 +1,8 @@
 import { crc32 } from './crc32';
 import { FurError } from './errors';
 import { inflateRaw } from './inflate';
-const hasStreams = typeof CompressionStream !== 'undefined' && typeof DecompressionStream !== 'undefined';
+// Ba'zi eski WebView'larda CompressionStream bor, lekin 'deflate-raw' yo'q — konstruktorni sinab ko'ramiz
+const hasStreams = (() => { try { new CompressionStream('deflate-raw'); new DecompressionStream('deflate-raw'); return true; } catch { return false; } })();
 
 export interface ZipEntry { name: string; data: Uint8Array; store?: boolean }
 export interface ZipLimits { maxEntries: number; maxTotal: number; maxEntry: number }

@@ -1,4 +1,5 @@
 import { FurDocument, FurError, PageType, newDocument, newPage, parseFur, serializeFur, uid } from '../../packages/fur-format/src/index';
+import { mountPageGrid, GridHandle } from './pagegrid';
 import { mountEditor, EditorHandle } from './editor';
 import { mountBoard, BoardHandle } from './board';
 import { startPresentation } from './present';
@@ -12,7 +13,7 @@ type Section = 'all' | 'recent' | 'fav' | 'trash';
 type Sort = 'modified' | 'name' | 'size';
 interface Session { meta: DocMeta; doc: FurDocument; status: 'saved' | 'dirty' | 'saving' | 'error'; savedAt: number; recT: number; saveT: number; recovery: { savedAt: number; data: Uint8Array } | null }
 const S = { section: 'all' as Section, folderId: null as string | null, q: '', sort: 'modified' as Sort, metas: [] as DocMeta[], folders: [] as Folder[],
-  view: 'home' as 'home' | 'doc' | 'edit', pageIdx: 0, editor: null as EditorHandle | null, ses: null as Session | null, menu: null as string | null, est: null as { usage: number; quota: number } | null, err: '' };
+  view: 'home' as 'home' | 'doc' | 'edit', pageIdx: 0, editor: null as EditorHandle | null, grid: null as GridHandle | null, pview: ((): 'grid' | 'list' => { try { return localStorage.getItem('fur.pview') === 'list' ? 'list' : 'grid'; } catch { return 'grid'; } })(), ses: null as Session | null, menu: null as string | null, est: null as { usage: number; quota: number } | null, err: '' };
 const root = document.getElementById('app')!;
 const esc = (s: string) => s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!));
 const I = (d: string) => `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
@@ -34,6 +35,8 @@ function ago(t: number): string {
 const hhmm = (t: number) => new Date(t).toLocaleTimeString('uz', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
 // ---------- dialoglar va xabarlar ----------
+// eski Android WebView'lar uchun kichik zaxiralar
+if (typeof Blob !== 'undefined' && !Blob.prototype.arrayBuffer) Blob.prototype.arrayBuffer = function (this: Blob) { return new Response(this).arrayBuffer(); };
 let toastT = 0;
 function toast(msg: string, bad = false) {
   let t = document.getElementById('toast'); if (!t) { t = document.createElement('div'); t.id = 'toast'; document.body.append(t); }
@@ -218,7 +221,7 @@ function docView(): string {
   <button class="btn" data-open="${i}">Tahrirlash</button><div class="pgact"><button class="ib" data-sa="up:${i}" aria-label="Yuqoriga" ${i === 0 ? 'disabled' : ''}>${IC.up}</button><button class="ib" data-sa="down:${i}" aria-label="Pastga" ${i === s.doc.pages.length - 1 ? 'disabled' : ''}>${IC.down}</button><button class="ib dng" data-sa="delpage:${i}" aria-label="O‘chirish">${IC.trash}</button></div></article>`).join('');
   return `<div class="docv"><header class="top"><button class="ib" data-act="back" aria-label="Orqaga">${IC.back}</button><input id="title" class="ttl" value="${esc(s.doc.title)}" maxlength="120" aria-label="Dars nomi"><span id="status" class="chip saved"></span>
   <button class="btn" data-sa="live">${IC.live}<span>Jonli dars</span></button><button class="btn pri" data-sa="present">${IC.play}<span>Taqdimot</span></button><button class="btn" data-sa="export">${IC.download}<span>Eksport</span></button></header>${rec}
-  <section class="content narrow"><div class="meta">${s.doc.pages.length} sahifa · ${fmtSize(s.meta.size)} · yaratilgan ${new Date(s.doc.created).toLocaleDateString('uz')}</div><div class="plist2">${pages}</div>
+  <section class="content narrow"><div class="meta">${s.doc.pages.length} sahifa · ${fmtSize(s.meta.size)} · yaratilgan ${new Date(s.doc.created).toLocaleDateString('uz')}</div><div class="vtog" role="group" aria-label="Ko‘rinish"><button class="${S.pview === 'grid' ? 'on' : ''}" data-act="pview:grid">${IC.board}<span>To‘r</span></button><button class="${S.pview === 'list' ? 'on' : ''}" data-act="pview:list">${IC.doc}<span>Ro‘yxat</span></button></div>${S.pview === 'grid' ? '<div id="pgridhost"></div>' : `<div class="plist2">${pages}</div>`}
   <div class="addrow"><button class="btn" data-sa="addboard">${IC.board}<span>Doska sahifasi qo‘shish</span></button><button class="btn" data-sa="adddoc">${IC.doc}<span>Hujjat sahifasi qo‘shish</span></button></div>
   <div class="note"><b>Eslatma:</b> sahifani bosing: hujjat sahifasi muharrirda, doska sahifasi doskada ochiladi.</div></section></div>`;
 }
@@ -259,18 +262,20 @@ async function liveDialog() {
   const L = live!; const host = L.broker.replace(/^wss?:\/\//, '').replace(/[:/].*$/, '');
   void modal<string>(`<h3>Jonli dars</h3><p class="mut">O‘quvchilar ilovada <b>“Darsga qo‘shilish”</b> tugmasini bosib, shu kodni kiritadi:</p><div class="bigcode" id="bcode">${fmtCode(L.code)}</div><div class="row"><button class="btn" data-v="copy">Kodni nusxalash</button></div><p class="mut small">Server: ${esc(host)} · xabarlar shifrlangan</p><h4>Qatnashuvchilar (<span id="rcount">0</span>)</h4><ul class="rost" id="rost"></ul><div class="row"><button class="btn dng" data-v="end">Darsni tugatish</button><button class="btn pri" data-v="close">Yopish</button></div>`, (box, done) => {
     refreshRoster();
-    box.querySelectorAll<HTMLElement>('[data-v]').forEach(b => b.addEventListener('click', () => { const v = b.dataset.v; if (v === 'copy') { void navigator.clipboard?.writeText(fmtCode(L.code)).then(() => toast('Kod nusxalandi'), () => toast('Nusxalab bo‘lmadi, kodni qo‘lda yozing', true)); } else { if (v === 'end') endLive(); done(v!); } }));
+    box.querySelectorAll<HTMLElement>('[data-v]').forEach(b => b.addEventListener('click', () => { const v = b.dataset.v; if (v === 'copy') { void navigator.clipboard?.writeText(fmtCode(L.code) + (L.code[0] === '9' && L.broker ? ' ' + L.broker : '')).then(() => toast('Kod nusxalandi'), () => toast('Nusxalab bo‘lmadi, kodni qo‘lda yozing', true)); } else { if (v === 'end') endLive(); done(v!); } }));
   });
 }
 async function joinDialog() {
   let nm = ''; try { nm = localStorage.getItem('fur.name') || ''; } catch { /* */ }
-  void modal<string>(`<h3>Darsga qo‘shilish</h3><label class="lbl">Dars kodi<input id="jc" placeholder="masalan: 0-K7M2-Q9XA-4TDP" autocomplete="off" autocapitalize="characters"></label><label class="lbl">Ismingiz<input id="jn" maxlength="40" value="${esc(nm)}" placeholder="Ism"></label><label class="lbl">Server (faqat o‘qituvchi o‘z serveri ko‘rsatgan bo‘lsa)<input id="js" placeholder="bo‘sh qoldiring" value="${esc(customBroker())}"></label><p class="mut small" id="jerr"></p><div class="row"><button class="btn" data-v="">Bekor qilish</button><button class="btn pri" data-v="go">Qo‘shilish</button></div>`, (box, done) => {
+  void modal<string>(`<h3>Darsga qo‘shilish</h3><label class="lbl">Dars kodi<input id="jc" placeholder="masalan: 0-K7M2-Q9XA-4TDP (server bilan birga qo‘yish mumkin)" autocomplete="off" autocapitalize="characters"></label><label class="lbl">Ismingiz<input id="jn" maxlength="40" value="${esc(nm)}" placeholder="Ism"></label><label class="lbl">Server (faqat o‘qituvchi o‘z serveri ko‘rsatgan bo‘lsa)<input id="js" placeholder="bo‘sh qoldiring" value="${esc(customBroker())}"></label><p class="mut small" id="jerr"></p><div class="row"><button class="btn" data-v="">Bekor qilish</button><button class="btn pri" data-v="go">Qo‘shilish</button></div>`, (box, done) => {
     const q = (id: string) => box.querySelector<HTMLInputElement>('#' + id)!;
     box.querySelector('[data-v=""]')!.addEventListener('click', () => done(null));
     const go = async () => {
       const name = q('jn').value.trim() || 'O‘quvchi', err = box.querySelector<HTMLElement>('#jerr')!; err.textContent = 'Ulanmoqda…';
-      try { localStorage.setItem('fur.name', name); } catch { /* */ } setCustomBroker(q('js').value.trim());
-      try { await joinClass(q('jc').value, name, why => { if (why !== 'exit') toast(why); render(); }); done('ok'); } catch (e) { err.textContent = (e as Error).message; err.classList.add('bad'); }
+      try { localStorage.setItem('fur.name', name); } catch { /* */ }
+      let codeIn = q('jc').value, srvIn = q('js').value.trim(); const um = codeIn.match(/wss?:\/\/\S+/i); if (um) { srvIn = um[0]; codeIn = codeIn.replace(um[0], ''); } // "kod + server" birga qo'yilsa
+      setCustomBroker(srvIn);
+      try { await joinClass(codeIn, name, why => { if (why !== 'exit') toast(why); render(); }); done('ok'); } catch (e) { err.textContent = (e as Error).message; err.classList.add('bad'); }
     };
     box.querySelector('[data-v=go]')!.addEventListener('click', () => void go()); q('jc').addEventListener('keydown', e => { if (e.key === 'Enter') void go(); }); q('jc').focus();
   });
@@ -284,18 +289,19 @@ function openPage(i: number) {
   S.pageIdx = i; S.view = 'edit'; render(); live?.sendPage(i);
 }
 function render() {
-  if (S.editor) { S.editor.destroy(); S.editor = null; }
+  if (S.editor) { S.editor.destroy(); S.editor = null; } if (S.grid) { S.grid.destroy(); S.grid = null; }
   const keepQ = document.activeElement?.id === 'q', pos = (document.getElementById('q') as HTMLInputElement | null)?.selectionStart ?? 0;
   root.innerHTML = S.view === 'home' ? home() : S.view === 'doc' ? docView() : editView();
   if (S.view !== 'home') updateStatus();
   if (S.view === 'edit' && S.ses) { const ses = S.ses; const hp = { doc: ses.doc, page: ses.doc.pages[S.pageIdx], index: S.pageIdx, onChange: changed, toast, ask: askText }; const el = document.getElementById('editor')!; S.editor = hp.page.type === 'board' ? mountBoard(el, hp) : mountEditor(el, hp); }
+  if (S.view === 'doc' && S.ses && S.pview === 'grid') { const h = document.getElementById('pgridhost'); if (h) S.grid = mountPageGrid(h, S.ses.doc); }
   if (keepQ) { const q = document.getElementById('q') as HTMLInputElement; q.focus(); q.setSelectionRange(pos, pos); }
 }
 
 // ---------- hodisalar ----------
 root.addEventListener('click', async e => {
   const t = e.target as HTMLElement;
-  const op = t.closest<HTMLElement>('[data-open]'); if (op && S.ses) return openPage(Number(op.dataset.open));
+  const op = t.closest<HTMLElement>('[data-open]'); if (op && S.ses && !t.closest('[data-sa]')) return openPage(Number(op.dataset.open));
   const sa = t.closest<HTMLElement>('[data-sa]'); if (sa) { const [a, arg] = sa.dataset.sa!.split(':'); return void sesAction(a, arg); }
   const nav = t.closest<HTMLElement>('[data-nav]'); if (nav) { S.section = nav.dataset.nav as Section; S.q = ''; S.folderId = null; S.menu = null; return render(); }
   const fo = t.closest<HTMLElement>('[data-folder]'); if (fo) { S.folderId = fo.dataset.folder || null; S.menu = null; return render(); }
@@ -312,6 +318,7 @@ root.addEventListener('click', async e => {
     if (a === 'back') return void closeDoc();
     if (a === 'present') return present(S.view === 'edit' ? S.pageIdx : 0);
     if (a === 'pages') { S.view = 'doc'; return render(); }
+    if (a.startsWith('pview:')) { S.pview = a.slice(6) === 'list' ? 'list' : 'grid'; try { localStorage.setItem('fur.pview', S.pview); } catch { /* */ } return render(); }
     if (a === 'prevpage' || a === 'nextpage') { let j = S.pageIdx + (a === 'nextpage' ? 1 : -1); if (S.ses!.doc.pages[j]) return openPage(j); return; }
     if (a === 'theme') return toggleTheme();
   }

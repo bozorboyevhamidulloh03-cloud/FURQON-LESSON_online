@@ -10,7 +10,9 @@ export interface Run { t: string; b?: boolean; i?: boolean; u?: boolean; s?: boo
 export type Align = 'left' | 'center' | 'right' | 'justify';
 export interface TextBlock { id: string; type: 'heading' | 'paragraph' | 'li'; level?: 1 | 2 | 3; list?: 'bullet' | 'ordered'; indent?: number; align?: Align; runs: Run[] }
 export interface TableBlock { id: string; type: 'table'; header: boolean; rows: Run[][][] }
-export interface ImageBlock { id: string; type: 'image'; a: string; w: number; align: Align; caption: Run[] }
+export type ImageWrap = 'block' | 'left' | 'right' | 'behind' | 'front';
+/** wrap: block (matn bilan, o‘z qatorida), left/right (matn o‘rab oladi), behind/front (matn ortida/ustida, x=% kenglik, y=px) */
+export interface ImageBlock { id: string; type: 'image'; a: string; w: number; align: Align; caption: Run[]; wrap?: ImageWrap; x?: number; y?: number }
 export type Block = TextBlock | TableBlock | ImageBlock;
 export interface Layout { margin: 'narrow' | 'normal' | 'wide'; header: string; footer: string; pageNumbers: boolean }
 export const defaultLayout = (): Layout => ({ margin: 'normal', header: '', footer: '', pageNumbers: true });

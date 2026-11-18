@@ -1,4 +1,4 @@
-import { Align, Block, FurDocument, FurPage, ImageBlock, Run, TableBlock, TextBlock, allHave, normalizeRuns, patchRuns, plainText, replaceRange, runsLength, setFlag, splitRuns, uid } from '../../packages/fur-format/src/index';
+import { Align, Block, FurDocument, FurPage, ImageBlock, ImageWrap, Run, TableBlock, TextBlock, allHave, normalizeRuns, patchRuns, plainText, replaceRange, runsLength, setFlag, splitRuns, uid } from '../../packages/fur-format/src/index';
 
 export interface EditorHost { doc: FurDocument; page: FurPage; index: number; onChange(): void; toast(m: string, bad?: boolean): void; ask(t: string, v?: string, ok?: string): Promise<string | null> }
 export interface EditorHandle { destroy(): void }
@@ -123,8 +123,12 @@ export function mountEditor(root: HTMLElement, h: EditorHost): EditorHandle {
         b.rows.forEach((row, r) => { const tr = document.createElement('tr'); row.forEach((cell, c) => { const td = document.createElement(b.header && r === 0 ? 'th' : 'td'); mkEd(td, 'cell', b.id, cell); td.dataset.r = String(r); td.dataset.c = String(c); tr.append(td); }); t.append(tr); });
         w.append(t); body.append(w);
       } else {
-        const f = document.createElement('figure'); f.className = 'imgf' + (selImg === b.id ? ' sel' : ''); f.dataset.fid = b.id; f.style.textAlign = b.align;
-        const im = document.createElement('img'); im.src = imgUrl(b.a); im.style.width = b.w + '%'; im.alt = ''; im.draggable = false; f.append(im);
+        const wr = b.wrap ?? 'block', abs = wr === 'behind' || wr === 'front';
+        const f = document.createElement('figure'); f.className = 'imgf w-' + wr + (selImg === b.id ? ' sel' : ''); f.dataset.fid = b.id; f.style.textAlign = b.align;
+        if (abs) { f.style.left = `calc(var(--pad) + (100% - 2 * var(--pad)) * ${(b.x ?? 0) / 100})`; f.style.top = (b.y ?? 0) + 'px'; f.style.width = `calc((100% - 2 * var(--pad)) * ${b.w / 100})`; }
+        else if (wr === 'left' || wr === 'right') f.style.width = b.w + '%';
+        const im = document.createElement('img'); im.src = imgUrl(b.a); im.style.width = wr === 'block' ? b.w + '%' : '100%'; im.alt = ''; im.draggable = false; f.append(im);
+        if (selImg === b.id) { const hd = document.createElement('div'); hd.className = 'imgh'; hd.title = 'Sudrab ko‘chirish'; hd.textContent = '✥'; const rz = document.createElement('div'); rz.className = 'imgz'; rz.title = 'O‘lchamini o‘zgartirish'; f.append(hd, rz); }
         const cap = document.createElement('figcaption'); cap.className = 'cap'; mkEd(cap, 'cap', b.id, b.caption); f.append(cap); body.append(f);
       }
     }
@@ -253,8 +257,36 @@ export function mountEditor(root: HTMLElement, h: EditorHost): EditorHandle {
   });
   body.addEventListener('dragover', e => e.preventDefault());
   body.addEventListener('drop', e => { e.preventDefault(); const f = Array.from(e.dataTransfer?.files ?? []).find(x => x.type.startsWith('image/')); if (f) void addImage(f); });
-  body.addEventListener('mousedown', e => { const f = (e.target as HTMLElement).closest<HTMLElement>('.imgf'); const nid = f && !(e.target as HTMLElement).closest('.cap') ? f.dataset.fid! : null; if (nid !== selImg) { selImg = nid; body.querySelectorAll('.imgf').forEach(x => x.classList.toggle('sel', (x as HTMLElement).dataset.fid === selImg)); updateState(); } if (nid) { body.focus(); getSelection()?.removeAllRanges(); } });
+  body.addEventListener('mousedown', e => { const f = (e.target as HTMLElement).closest<HTMLElement>('.imgf'); const nid = f && !(e.target as HTMLElement).closest('.cap') ? f.dataset.fid! : null; if (nid !== selImg) { selImg = nid; const ss = saveSel(); renderAll(); if (!nid) restoreSel(ss); updateState(); } if (nid) { body.focus(); getSelection()?.removeAllRanges(); } });
   body.tabIndex = -1; body.style.outline = 'none';
+  const WRAPS: [ImageWrap, string, string][] = [['block', 'Matn bilan', 'O‘z qatorida (tepa va past)'], ['left', 'Chapga o‘rash', 'Rasm chapda, matn o‘rab oladi'], ['right', 'O‘ngga o‘rash', 'Rasm o‘ngda, matn o‘rab oladi'], ['behind', 'Matn ortida', 'Matn rasm ustida turadi'], ['front', 'Matn ustida', 'Rasm matn ustida, istalgan joyga']];
+  function setWrap(ib: ImageBlock, wr: ImageWrap) {
+    const fig = body.querySelector<HTMLElement>(`[data-fid="${ib.id}"]`), was = ib.wrap ?? 'block', abs = wr === 'behind' || wr === 'front';
+    let px = ib.x ?? 0, py = ib.y ?? 0;
+    if (abs && fig && !(was === 'behind' || was === 'front')) { const cw = Math.max(1, body.clientWidth - 2 * padPx()); px = Math.max(0, Math.min(100 - ib.w, (fig.offsetLeft - padPx()) / cw * 100)); py = Math.max(0, Math.min(fig.offsetTop, body.clientHeight - fig.offsetHeight)); }
+    mutate(() => { if (wr === 'block') delete ib.wrap; else ib.wrap = wr; if (abs) { ib.x = Math.round(px * 10) / 10; ib.y = Math.round(py); } else { delete ib.x; delete ib.y; } if (wr === 'left' || wr === 'right') ib.w = Math.min(ib.w, 60); });
+  }
+  const padPx = () => parseFloat(getComputedStyle(body).paddingLeft) || 0;
+  // sudrab ko'chirish / o'lchamini o'zgartirish
+  body.addEventListener('pointerdown', e => {
+    const t = e.target as HTMLElement, hd = t.closest<HTMLElement>('.imgh'), rz = t.closest<HTMLElement>('.imgz'), fig = t.closest<HTMLElement>('.imgf'); if (!fig || (!hd && !rz && !(fig.classList.contains('w-front') && fig.classList.contains('sel') && !t.closest('.cap')))) return;
+    const ib = find(fig.dataset.fid!); if (ib?.type !== 'image') return; e.preventDefault(); fig.setPointerCapture(e.pointerId);
+    const sx = e.clientX, sy = e.clientY, bw = Math.max(1, body.clientWidth - 2 * padPx()), abs = ib.wrap === 'behind' || ib.wrap === 'front', x0 = ib.x ?? 0, y0 = ib.y ?? 0, w0 = ib.w; let nx = x0, ny = y0, nw = w0, moved = false, dropAt = -1;
+    const mv = (ev: PointerEvent) => {
+      const dx = ev.clientX - sx, dy = ev.clientY - sy; if (Math.hypot(dx, dy) > 3) moved = true;
+      if (rz) { nw = Math.max(8, Math.min(100, w0 + dx / bw * 100)); if (abs) fig.style.width = `calc((100% - 2 * var(--pad)) * ${nw / 100})`; else if (ib.wrap) fig.style.width = nw + '%'; else (fig.querySelector('img') as HTMLElement).style.width = nw + '%'; }
+      else if (abs) { nx = Math.max(0, Math.min(100 - w0, x0 + dx / bw * 100)); ny = Math.max(0, Math.min(Math.max(0, body.clientHeight - fig.offsetHeight), y0 + dy)); fig.style.left = `calc(var(--pad) + (100% - 2 * var(--pad)) * ${nx / 100})`; fig.style.top = ny + 'px'; }
+      else { fig.style.transform = `translateY(${dy}px)`; fig.style.opacity = '.6'; const r = body.getBoundingClientRect(); const kids = Array.from(body.children).filter(c => c !== fig && !(c as HTMLElement).classList.contains('w-behind') && !(c as HTMLElement).classList.contains('w-front')); dropAt = kids.length; for (let k = 0; k < kids.length; k++) { const q = kids[k].getBoundingClientRect(); if (ev.clientY < q.top + q.height / 2) { dropAt = k; break; } } void r; }
+    };
+    const up = () => {
+      fig.removeEventListener('pointermove', mv); fig.removeEventListener('pointerup', up); fig.removeEventListener('pointercancel', up); fig.style.transform = ''; fig.style.opacity = '';
+      if (!moved) return;
+      if (rz) mutate(() => { ib.w = Math.round(nw); });
+      else if (abs) mutate(() => { ib.x = Math.round(nx * 10) / 10; ib.y = Math.round(ny); });
+      else if (dropAt >= 0) { const kids = Array.from(body.children).filter(c => c !== fig && !(c as HTMLElement).classList.contains('w-behind') && !(c as HTMLElement).classList.contains('w-front')); const bidOf = (c: Element | undefined): string | null => c ? ((c as HTMLElement).dataset.bid ?? (c as HTMLElement).dataset.fid ?? c.querySelector<HTMLElement>('[data-bid]')?.dataset.bid ?? null) : null; const target = bidOf(kids[dropAt]); mutate(() => { const i = blocks.indexOf(ib); blocks.splice(i, 1); const j = target ? blocks.findIndex(b => b.id === target) : blocks.length; blocks.splice(j < 0 ? blocks.length : j, 0, ib); }); }
+    };
+    fig.addEventListener('pointermove', mv); fig.addEventListener('pointerup', up); fig.addEventListener('pointercancel', up);
+  });
   function delBlock(id: string) { checkpoint(); const i = blocks.findIndex(b => b.id === id); if (i < 0) return; blocks.splice(i, 1); selImg = null; renderAll(); done(); }
 
   // ---- toolbar va kontekst panel ----
@@ -275,7 +307,12 @@ export function mountEditor(root: HTMLElement, h: EditorHost): EditorHandle {
   fileIn.addEventListener('change', () => { const f = fileIn.files?.[0]; fileIn.value = ''; if (f) void addImage(f); });
   ctx.addEventListener('click', e => {
     const bt = (e.target as HTMLElement).closest<HTMLElement>('[data-x]'); if (!bt) return; const x = bt.dataset.x!, c = curCell(), ib = selImg ? find(selImg) : undefined;
-    if (ib?.type === 'image') { if (x === 'del') return delBlock(ib.id); if (x.startsWith('w')) mutate(() => { (ib as ImageBlock).w = Number(x.slice(1)); }); return; }
+    if (ib?.type === 'image') {
+      if (x === 'del') return delBlock(ib.id);
+      if (x.startsWith('wrap:')) return setWrap(ib, x.slice(5) as ImageWrap);
+      if (x === 'mvup' || x === 'mvdn') { const i = blocks.indexOf(ib), j = i + (x === 'mvup' ? -1 : 1); if (j < 0 || j >= blocks.length) return; mutate(() => { blocks.splice(i, 1); blocks.splice(j, 0, ib); }); return; }
+      if (x.startsWith('w')) mutate(() => { (ib as ImageBlock).w = Number(x.slice(1)); }); return;
+    }
     if (!c) return; const cols = c.b.rows[0].length;
     mutate(() => {
       if (x === 'addr') c.b.rows.splice(c.r + 1, 0, emptyRow(cols)); else if (x === 'addc') c.b.rows.forEach(r => r.splice(c.c + 1, 0, [])); else if (x === 'delr' && c.b.rows.length > 1) c.b.rows.splice(c.r, 1);
@@ -291,7 +328,7 @@ export function mountEditor(root: HTMLElement, h: EditorHost): EditorHandle {
     tools.querySelector('[data-cmd="bullet"]')?.classList.toggle('on', isText(b) && b.type === 'li' && b.list === 'bullet'); tools.querySelector('[data-cmd="ordered"]')?.classList.toggle('on', isText(b) && b.type === 'li' && b.list === 'ordered');
     (['left', 'center', 'right', 'justify'] as Align[]).forEach(al => tools.querySelector(`[data-cmd="al-${al}"]`)?.classList.toggle('on', (isText(b) ? (b.align ?? 'left') : b?.type === 'image' ? b.align : 'left') === al));
     const ib = selImg ? find(selImg) : undefined;
-    if (ib?.type === 'image') { ctx.hidden = false; ctx.innerHTML = `<b>Rasm</b>${[25, 50, 75, 100].map(w => `<button class="tb ${ib.w === w ? 'on' : ''}" data-x="w${w}">${w}%</button>`).join('')}<button class="tb dng" data-x="del">O‘chirish</button>`; }
+    if (ib?.type === 'image') { ctx.hidden = false; const wr = ib.wrap ?? 'block'; ctx.innerHTML = `<b>Rasm</b>${WRAPS.map(([k, t, tt]) => `<button class="tb ${wr === k ? 'on' : ''}" data-x="wrap:${k}" title="${tt}">${t}</button>`).join('')}<span class="tsep"></span>${[25, 50, 75, 100].map(w => `<button class="tb ${Math.round(ib.w) === w ? 'on' : ''}" data-x="w${w}">${w}%</button>`).join('')}<span class="tsep"></span><button class="tb" data-x="mvup" title="Yuqoriga">▲</button><button class="tb" data-x="mvdn" title="Pastga">▼</button><button class="tb dng" data-x="del">O‘chirish</button>`; }
     else if (b?.type === 'table') { ctx.hidden = false; ctx.innerHTML = `<b>Jadval</b><button class="tb" data-x="addr">+ Qator</button><button class="tb" data-x="addc">+ Ustun</button><button class="tb" data-x="delr">− Qator</button><button class="tb" data-x="delc">− Ustun</button><button class="tb ${b.header ? 'on' : ''}" data-x="head">Sarlavha qatori</button><button class="tb dng" data-x="del">Jadvalni o‘chirish</button>`; }
     else ctx.hidden = true;
   }

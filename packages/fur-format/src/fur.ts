@@ -1,7 +1,7 @@
 import { crcHex, sha256Hex } from './crc32';
 import { FurError } from './errors';
 import { readZip, writeZip, ZipEntry, ZipLimits, DEFAULT_LIMITS } from './zip';
-import { Align, Background, Block, FORMAT_VERSION, FurAsset, FurDocument, FurObject, FurPage, Layout, PageType, Run, defaultLayout, uid } from './model';
+import { Align, Background, Block, ImageBlock, FORMAT_VERSION, FurAsset, FurDocument, FurObject, FurPage, Layout, PageType, Run, defaultLayout, uid } from './model';
 import { normalizeRuns } from './runs';
 
 const MIMES: Record<string, string> = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp', 'image/gif': 'gif', 'audio/mpeg': 'mp3', 'audio/wav': 'wav', 'video/mp4': 'mp4' };
@@ -63,7 +63,10 @@ function cleanBlocks(b: any): Block[] {
       for (const r of rows) while (r.length < cols) r.push([]);
       if (rows.length) out.push({ id, type: 'table', header: !!x.header, rows });
     } else if (x.type === 'image' && typeof x.a === 'string' && ID_RE.test(x.a)) {
-      out.push({ id, type: 'image', a: x.a, w: num(x.w) ? Math.max(5, Math.min(100, x.w)) : 100, align: cleanAlign(x.align) ?? 'center', caption: cleanRuns(x.caption) });
+      const ib: ImageBlock = { id, type: 'image', a: x.a, w: num(x.w) ? Math.max(5, Math.min(100, x.w)) : 100, align: cleanAlign(x.align) ?? 'center', caption: cleanRuns(x.caption) };
+      if (x.wrap === 'left' || x.wrap === 'right' || x.wrap === 'behind' || x.wrap === 'front') ib.wrap = x.wrap;
+      if (ib.wrap === 'behind' || ib.wrap === 'front') { ib.x = num(x.x) ? Math.max(0, Math.min(100, x.x)) : 0; ib.y = num(x.y) ? Math.max(0, Math.min(100000, x.y)) : 0; }
+      out.push(ib);
     }
   }
   return out;

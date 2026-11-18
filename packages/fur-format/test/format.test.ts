@@ -65,5 +65,12 @@ const bad2 = { id: 'x', type: 'document', blocks: [{ type: 'paragraph', text: 'e
   ok('runs: allHave', allHave(R, 6, 11, 'b') && !allHave(R, 0, 11, 'b'));
   ok('runs: split/merge', plainText(splitRuns(R, 3)[0]) === 'Sal' && plainText(splitRuns(R, 3)[1]) === 'om dunyo');
   ok('runs: almashtirish', plainText(replaceRange(R, 6, 11, 'jahon')) === 'Salom jahon');
+  // rasm joylashuvi (wrap) saqlanishi va tozalanishi
+  const wd = newDocument('wrap'); const wp = wd.pages[0]; wp.type = 'document'; wd.assets.push({ id: 'a1', mime: 'image/png', data: new Uint8Array([137, 80, 78, 71]) });
+  wp.blocks.push({ id: 'b1', type: 'image', a: 'a1', w: 50, align: 'center', caption: [], wrap: 'front', x: 12.5, y: 340 }, { id: 'b2', type: 'image', a: 'a1', w: 40, align: 'left', caption: [], wrap: 'left' }, { id: 'b3', type: 'image', a: 'a1', w: 40, align: 'left', caption: [], wrap: 'bad' as never, x: 5 });
+  const wr = (await parseFur(await serializeFur(wd))).doc.pages[0].blocks as any[];
+  ok('wrap: front + x/y saqlandi', wr[0].wrap === 'front' && wr[0].x === 12.5 && wr[0].y === 340);
+  ok('wrap: left saqlandi (x/y yo‘q)', wr[1].wrap === 'left' && wr[1].x === undefined);
+  ok('wrap: noto‘g‘ri qiymat tashlandi', wr[2].wrap === undefined && wr[2].x === undefined);
   console.log(`\n${pass} o‘tdi, ${fail} yiqildi`); process.exit(fail ? 1 : 0);
 })();

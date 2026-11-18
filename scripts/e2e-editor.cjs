@@ -2,7 +2,7 @@ const {chromium}=require('/opt/npm-tools/node_modules/playwright');
 const SHOT=process.argv[2]||'/home/claude/fur-platform/docs/shots2';require('fs').mkdirSync(SHOT,{recursive:true});
 let pass=0,fail=0;const ok=(n,c,x='')=>{c?pass++:fail++;console.log((c?'PASS ':'FAIL ')+n+(x?'  '+x:''));};
 (async()=>{
-const b=await chromium.launch();const ctx=await b.newContext({viewport:{width:1280,height:900},acceptDownloads:true});ctx.setDefaultTimeout(8000);
+const b=await chromium.launch();const ctx=await b.newContext({viewport:{width:1280,height:900},acceptDownloads:true});await ctx.addInitScript(()=>{try{localStorage.setItem('fur.pview','list')}catch{}});ctx.setDefaultTimeout(8000);
 const pg=await ctx.newPage();const errs=[];pg.on('pageerror',e=>errs.push(e.message));pg.on('console',m=>{if(m.type()==='error')errs.push(m.text())});
 await pg.goto('http://localhost:8765/');await pg.waitForSelector('.empty');
 await pg.click('header [data-act=new]');await pg.fill('.dlg input','Ingliz tili: Present Simple');await pg.click('.dlg [data-x="1"]');await pg.waitForSelector('.docv');

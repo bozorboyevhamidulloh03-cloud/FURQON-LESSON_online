@@ -3,7 +3,7 @@ const SHOT=process.argv[2]||'/home/claude/fur-platform/docs/shots4';require('fs'
 let pass=0,fail=0;const ok=(n,c,x='')=>{c?pass++:fail++;console.log((c?'PASS ':'FAIL ')+n+(x?'  '+x:''));};
 const D='/home/claude/imp/';
 (async()=>{
-const b=await chromium.launch();const ctx=await b.newContext({viewport:{width:1280,height:900}});ctx.setDefaultTimeout(15000);
+const b=await chromium.launch();const ctx=await b.newContext({viewport:{width:1280,height:900}});await ctx.addInitScript(()=>{try{localStorage.setItem('fur.pview','list')}catch{}});ctx.setDefaultTimeout(15000);
 const pg=await ctx.newPage();const errs=[];pg.on('pageerror',e=>errs.push(e.message));pg.on('console',m=>{if(m.type()==='error')errs.push(m.text())});
 await pg.goto('http://localhost:8765/');await pg.waitForSelector('.empty');
 const titles=()=>pg.evaluate(()=>__fur.S.metas.map(m=>m.title+'|'+m.pages+'|'+m.boards+'|'+m.docs));
@@ -44,7 +44,7 @@ ok('PDF sahifasi ustiga yozildi (2 obyekt)',await pg.evaluate(()=>__board.page.o
 await pg.waitForFunction(()=>__fur.S.ses.status==='saved',null,{timeout:6000});
 ok('konsolda xato yo‘q',errs.length===0,errs.join(' | '));
 // mobil
-const m=await b.newContext({viewport:{width:390,height:820},isMobile:true,hasTouch:true,deviceScaleFactor:2});const mp=await m.newPage();mp.on('pageerror',e=>errs.push(e.message));await mp.goto('http://localhost:8765/');await mp.waitForSelector('.empty');
+const m=await b.newContext({viewport:{width:390,height:820},isMobile:true,hasTouch:true,deviceScaleFactor:2});await m.addInitScript(()=>{try{localStorage.setItem('fur.pview','list')}catch{}});const mp=await m.newPage();mp.on('pageerror',e=>errs.push(e.message));await mp.goto('http://localhost:8765/');await mp.waitForSelector('.empty');
 await mp.setInputFiles('#file',[D+'test.docx',D+'test.pdf']);await mp.click('.opt[data-v=img]');await mp.waitForFunction(()=>__fur.S.metas.length===2,null,{timeout:20000});await mp.waitForTimeout(500);await mp.screenshot({path:SHOT+'/4-mobil-import.png'});
 console.log(`\n${pass} o‘tdi, ${fail} yiqildi`);await b.close();process.exit(fail?1:0);
 })().catch(e=>{console.error(e);process.exit(1)});

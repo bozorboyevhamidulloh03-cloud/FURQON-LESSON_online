@@ -1,7 +1,7 @@
 const {chromium}=require('/opt/npm-tools/node_modules/playwright');
 let pass=0,fail=0;const ok=(n,c,x='')=>{c?pass++:fail++;console.log((c?'PASS ':'FAIL ')+n+(x?'  '+x:''));};
 (async()=>{
-const b=await chromium.launch();const ctx=await b.newContext({viewport:{width:900,height:700}});ctx.setDefaultTimeout(10000);const pg=await ctx.newPage();const errs=[];pg.on('pageerror',e=>errs.push(e.message));pg.on('console',m=>{if(m.type()==='error')errs.push(m.text())});
+const b=await chromium.launch();const ctx=await b.newContext({viewport:{width:900,height:700}});await ctx.addInitScript(()=>{try{localStorage.setItem('fur.pview','list')}catch{}});ctx.setDefaultTimeout(10000);const pg=await ctx.newPage();const errs=[];pg.on('pageerror',e=>errs.push(e.message));pg.on('console',m=>{if(m.type()==='error')errs.push(m.text())});
 await pg.addInitScript(()=>{window.__calls=[];window.FurNative={saveFile:(n,m,b,l)=>window.__calls.push(['save',n,m,b,l]),version:()=>JSON.stringify({web:7,apk:1}),checkUpdate:()=>window.__calls.push(['check']),openExternal:u=>window.__calls.push(['ext',u])};});
 await pg.goto('http://localhost:8765/');await pg.waitForSelector('.empty');
 ok('Yangilanish tugmasi faqat ilovada ko‘rinadi (versiya sarlavhasi bilan)',await pg.locator('[data-act=update]').count()===1&&(await pg.locator('[data-act=update]').getAttribute('title'))==='Versiya: web 7, APK 1');
