@@ -1,0 +1,50 @@
+plugins {
+    id 'com.android.application'
+}
+
+def apkLevel   = (project.findProperty('furApkLevel') ?: '1').toString()
+def verCode    = (project.findProperty('furVersionCode') ?: '1').toString().toInteger()
+def updateUrl  = (project.findProperty('furUpdateUrl') ?: '').toString()
+
+android {
+    namespace 'uz.fur.platform'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId 'uz.fur.platform'
+        minSdk 24
+        targetSdk 34
+        versionCode verCode
+        versionName "1.0.${verCode}"
+        buildConfigField 'int', 'APK_LEVEL', apkLevel
+        buildConfigField 'String', 'UPDATE_URL', "\"${updateUrl}\""
+    }
+
+    buildFeatures { buildConfig true }
+
+    signingConfigs {
+        release {
+            def ks = System.getenv('KEYSTORE_FILE')
+            if (ks) {
+                storeFile file(ks)
+                storePassword System.getenv('KEYSTORE_PASSWORD')
+                keyAlias System.getenv('KEY_ALIAS')
+                keyPassword System.getenv('KEY_PASSWORD')
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            // Kalit berilmagan bo'lsa debug kalit bilan imzolanadi (ogohlantirish: keyingi APK ustiga o'rnatilmaydi)
+            signingConfig signingConfigs.release.storeFile != null ? signingConfigs.release : signingConfigs.debug
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+    lint { abortOnError false }
+}

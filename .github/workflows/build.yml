@@ -1,0 +1,82 @@
+name: FUR build
+# main ga har bir push: (1) veb paket yangilanishi Pages'ga chiqadi, (2) APK yig'iladi.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: fur-build
+  cancel-in-progress: false
+
+jobs:
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+      - run: npm install --no-audit --no-fund
+      - name: Build web
+        run: WEB_VERSION=${{ github.run_number }} bash scripts/build.sh
+      - name: Package update site
+        run: bash scripts/package-update.sh ${{ github.run_number }} "${{ github.repository }}" "Yangi versiya ${{ github.run_number }}"
+      - uses: actions/upload-artifact@v4
+        with: { name: web-dist, path: dist }
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with: { path: site }
+
+  deploy:
+    needs: web
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.dep.outputs.page_url }}
+    steps:
+      - id: dep
+        uses: actions/deploy-pages@v4
+
+  apk:
+    needs: web
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: { name: web-dist, path: android/app/src/main/assets/www }
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: 17 }
+      - uses: gradle/actions/setup-gradle@v4
+        with: { gradle-version: "8.7" }
+      - name: Keystore (agar secret berilgan bo'lsa)
+        env:
+          KS_B64: ${{ secrets.KEYSTORE_B64 }}
+        run: |
+          if [ -n "$KS_B64" ]; then echo "$KS_B64" | base64 -d > "$RUNNER_TEMP/fur.jks"; echo "KEYSTORE_FILE=$RUNNER_TEMP/fur.jks" >> "$GITHUB_ENV";
+          else echo "::warning::KEYSTORE_B64 secret yo'q — APK debug kalit bilan imzolanadi, keyingi APK ustiga o'rnatilmaydi!"; fi
+      - name: Build APK
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          OWNER=$(echo "${{ github.repository_owner }}" | tr 'A-Z' 'a-z'); REPO="${{ github.event.repository.name }}"
+          gradle -p android assembleRelease --no-daemon \
+            -PfurVersionCode=${{ github.run_number }} \
+            -PfurUpdateUrl="https://$OWNER.github.io/$REPO/latest.json"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FUR-Platform-apk
+          path: android/app/build/outputs/apk/release/*.apk
+      - name: Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cp android/app/build/outputs/apk/release/app-release.apk FUR-Platform.apk
+          gh release delete latest-apk --yes --cleanup-tag 2>/dev/null || true
+          gh release create latest-apk FUR-Platform.apk --title "FUR Platform APK (build ${{ github.run_number }})" --notes "Oxirgi APK. O'rnatilgach, keyingi yangilanishlar ilovaning o'zida keladi." --latest=false || true
