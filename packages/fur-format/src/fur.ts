@@ -1,7 +1,7 @@
 import { crcHex, sha256Hex } from './crc32';
 import { FurError } from './errors';
 import { readZip, writeZip, ZipEntry, ZipLimits, DEFAULT_LIMITS } from './zip';
-import { Align, Background, Block, ImageBlock, FORMAT_VERSION, FurAsset, FurDocument, FurObject, FurPage, Layout, PageType, Run, defaultLayout, uid } from './model';
+import { Align, Background, Block, Crop, ImageBlock, FORMAT_VERSION, FurAsset, FurDocument, FurObject, FurPage, Layout, PageType, Run, defaultLayout, uid } from './model';
 import { normalizeRuns } from './runs';
 
 const MIMES: Record<string, string> = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp', 'image/gif': 'gif', 'audio/mpeg': 'mp3', 'audio/wav': 'wav', 'video/mp4': 'mp4' };
@@ -23,9 +23,16 @@ function cleanObject(o: any): FurObject | null {
     case 'line': case 'arrow': case 'rect': case 'ellipse':
       return [o.x1, o.y1, o.x2, o.y2].every(num) ? { t: o.t, id, x1: o.x1, y1: o.y1, x2: o.x2, y2: o.y2, c, w } : null;
     case 'text': return typeof o.tx === 'string' && num(o.x) && num(o.y) ? { t: 'text', id, x: o.x, y: o.y, tx: o.tx.slice(0, 5000), s: num(o.s) ? o.s : 24, c } : null;
-    case 'image': return typeof o.a === 'string' && [o.x, o.y, o.w, o.h].every(num) ? { t: 'image', id, a: o.a, x: o.x, y: o.y, w: o.w, h: o.h } : null;
+    case 'image': { if (!(typeof o.a === 'string' && [o.x, o.y, o.w, o.h].every(num))) return null; const io: FurObject = { t: 'image', id, a: o.a, x: o.x, y: o.y, w: o.w, h: o.h }; const cr = cleanCrop(o.crop); if (cr) io.crop = cr; return io; }
   }
   return null;
+}
+export function cleanCrop(c: any): Crop | undefined {
+  if (!c || typeof c !== 'object') return undefined;
+  const f = (v: any) => num(v) ? Math.max(0, Math.min(90, v)) : 0;
+  let l = f(c.l), t = f(c.t), r = f(c.r), b = f(c.b);
+  if (l + r > 90) { const k = 90 / (l + r); l *= k; r *= k; } if (t + b > 90) { const k = 90 / (t + b); t *= k; b *= k; }
+  return l + t + r + b < 0.01 ? undefined : { l, t, r, b };
 }
 function cleanRuns(a: any): Run[] {
   if (!Array.isArray(a)) return [];
@@ -66,6 +73,7 @@ function cleanBlocks(b: any): Block[] {
       const ib: ImageBlock = { id, type: 'image', a: x.a, w: num(x.w) ? Math.max(5, Math.min(100, x.w)) : 100, align: cleanAlign(x.align) ?? 'center', caption: cleanRuns(x.caption) };
       if (x.wrap === 'left' || x.wrap === 'right' || x.wrap === 'behind' || x.wrap === 'front') ib.wrap = x.wrap;
       if (ib.wrap === 'behind' || ib.wrap === 'front') { ib.x = num(x.x) ? Math.max(0, Math.min(100, x.x)) : 0; ib.y = num(x.y) ? Math.max(0, Math.min(100000, x.y)) : 0; }
+      const cr = cleanCrop(x.crop); if (cr) ib.crop = cr;
       out.push(ib);
     }
   }

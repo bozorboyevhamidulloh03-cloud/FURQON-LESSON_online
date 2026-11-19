@@ -5,7 +5,7 @@ import { renderDoc } from './present';
 
 export interface GridHandle { destroy(): void }
 
-export function mountPageGrid(host: HTMLElement, doc: FurDocument): GridHandle {
+export function mountPageGrid(host: HTMLElement, doc: FurDocument, onMove?: (from: number, to: number) => void): GridHandle {
   const urls: string[] = [], imgs = new Map<string, HTMLImageElement>(); let dead = false;
   const redraw: (() => void)[] = [];
   const getImg = (id: string): HTMLImageElement | null => {
@@ -43,6 +43,27 @@ export function mountPageGrid(host: HTMLElement, doc: FurDocument): GridHandle {
     grid.appendChild(cell);
     draws.push(p.type === 'board' ? boardThumb(view, p) : docThumb(view, p, i + 1));
   });
+  // ---- sudrab tartibini o'zgartirish: sichqoncha — biroz sudrash, sensor — uzoq bosish ----
+  let dFrom = -1, dTo = -1, sx = 0, sy = 0, tm = 0, active = false, justDragged = false, pid = -1;
+  const cells = () => Array.from(grid.querySelectorAll<HTMLElement>('.pcell'));
+  const clearMarks = () => cells().forEach(c => c.classList.remove('pdrag', 'pdrop'));
+  const startDrag = () => { active = true; grid.classList.add('dragging'); cells()[dFrom]?.classList.add('pdrag'); };
+  const stop = () => { clearTimeout(tm); if (active && dTo >= 0 && dTo !== dFrom) { justDragged = true; setTimeout(() => { justDragged = false; }, 400); onMove?.(dFrom, dTo); } else if (active) { justDragged = true; setTimeout(() => { justDragged = false; }, 400); } active = false; dFrom = dTo = -1; pid = -1; grid.classList.remove('dragging'); clearMarks(); };
+  grid.addEventListener('pointerdown', e => {
+    if (!onMove || (e.pointerType === 'mouse' && e.button !== 0) || (e.target as HTMLElement).closest('button')) return;
+    const c = (e.target as HTMLElement).closest<HTMLElement>('.pcell'); if (!c) return; dFrom = Number(c.dataset.open); dTo = -1; sx = e.clientX; sy = e.clientY; pid = e.pointerId; active = false;
+    if (e.pointerType !== 'mouse') { clearTimeout(tm); tm = window.setTimeout(() => { if (dFrom >= 0) startDrag(); }, 350); }
+  });
+  grid.addEventListener('pointermove', e => {
+    if (dFrom < 0 || e.pointerId !== pid) return;
+    if (!active) { const mv = Math.hypot(e.clientX - sx, e.clientY - sy); if (e.pointerType === 'mouse' && mv > 6) startDrag(); else if (e.pointerType !== 'mouse' && mv > 10) { clearTimeout(tm); dFrom = -1; } if (!active) return; }
+    e.preventDefault(); const el = document.elementFromPoint(e.clientX, e.clientY)?.closest<HTMLElement>('.pcell'); clearMarks(); cells()[dFrom]?.classList.add('pdrag');
+    if (el && grid.contains(el)) { dTo = Number(el.dataset.open); if (dTo !== dFrom) el.classList.add('pdrop'); } else dTo = -1;
+  });
+  grid.addEventListener('touchmove', e => { if (active) e.preventDefault(); }, { passive: false });
+  grid.addEventListener('pointerup', stop); grid.addEventListener('pointercancel', () => { active = false; stop(); });
+  grid.addEventListener('click', e => { if (justDragged) { e.stopPropagation(); e.preventDefault(); } }, true);
+  grid.addEventListener('contextmenu', e => { if (dFrom >= 0) e.preventDefault(); });
   const ro = new ResizeObserver(() => draws.forEach(f => f())); ro.observe(grid); requestAnimationFrame(() => draws.forEach(f => f()));
   return { destroy() { dead = true; ro.disconnect(); urls.forEach(u => URL.revokeObjectURL(u)); grid.remove(); } };
 }

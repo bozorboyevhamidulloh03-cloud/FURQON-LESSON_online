@@ -1,0 +1,34 @@
+const {chromium}=require('/opt/npm-tools/node_modules/playwright');
+const SHOT=process.argv[2]||'/home/claude/fur-platform/docs/shots8';require('fs').mkdirSync(SHOT,{recursive:true});
+let pass=0,fail=0;const ok=(n,c,x='')=>{c?pass++:fail++;console.log((c?'PASS ':'FAIL ')+n+(x?'  '+x:''));};
+(async()=>{
+const b=await chromium.launch();const ctx=await b.newContext({viewport:{width:1300,height:1000}});ctx.setDefaultTimeout(12000);
+const pg=await ctx.newPage();const errs=[];pg.on('pageerror',e=>errs.push(e.message));
+await pg.goto('http://localhost:8765/');await pg.waitForSelector('.empty');
+await pg.click('header [data-act=new]');await pg.fill('.dlg input','Tartib');await pg.click('.dlg [data-x="1"]');await pg.waitForSelector('.docv');
+await pg.click('[data-sa=adddoc]');await pg.click('[data-sa=adddoc]');await pg.click('[data-sa=adddoc]');
+await pg.evaluate(()=>{const ps=__fur.S.ses.doc.pages;ps.forEach((p,i)=>{if(p.type==='document')p.blocks=[{id:'t'+i,type:'paragraph',runs:[{t:'Sahifa-'+i}]}]});});
+await pg.click('[data-act="pview:list"]');await pg.click('[data-act="pview:grid"]');await pg.waitForSelector('.pcell');
+const order=()=>pg.evaluate(()=>__fur.S.ses.doc.pages.map(p=>p.type==='document'?(p.blocks[0]?.runs[0]?.t||'-'):'doska'));
+const before=await order();ok('0: boshlang‘ich',before.join()==='doska,Sahifa-1,Sahifa-2,Sahifa-3',before.join());
+const c0=await pg.locator('.pcell').nth(0).boundingBox(),c2=await pg.locator('.pcell').nth(2).boundingBox();
+await pg.mouse.move(c0.x+c0.width/2,c0.y+c0.height/2);await pg.mouse.down();await pg.mouse.move(c0.x+c0.width/2+20,c0.y+c0.height/2+10,{steps:4});await pg.mouse.move(c2.x+c2.width/2,c2.y+c2.height/2,{steps:8});
+await pg.screenshot({path:SHOT+'/sahifa-sudrash.png'});await pg.mouse.up();await pg.waitForTimeout(300);
+const after=await order();ok('1: sudrab tartib o‘zgardi',after.join()==='Sahifa-1,Sahifa-2,doska,Sahifa-3',after.join());
+ok('1: sudrashdan keyin sahifa ochilmadi',await pg.locator('.pcell').count()===4);
+// 2. doskadan boshqa sahifaga
+await pg.click('[data-sa=addboard]');await pg.waitForTimeout(200);
+const bi=await pg.evaluate(()=>{const ps=__fur.S.ses.doc.pages;const i=ps.length-1;ps[i].objects=[{t:'rect',id:'o2',x1:300,y1:100,x2:420,y2:180,c:'#2f9e44',w:3}];ps[0].type;return i});
+await pg.screenshot({path:SHOT+'/dbg.png'});await pg.waitForSelector('.pcell');
+await pg.locator('.pcell').nth(bi).click();await pg.waitForSelector('canvas');await pg.waitForTimeout(400);
+await pg.click('[data-b=fit]');await pg.click('[data-tool=select]');await pg.waitForTimeout(300);
+const cv=await pg.locator('canvas').first().boundingBox();
+await pg.mouse.click(cv.x+cv.width/2-60,cv.y+cv.height/2-40+0);await pg.mouse.click(cv.x+cv.width/2,cv.y+cv.height/2-40);
+await pg.screenshot({path:SHOT+'/doska-tanlandi.png'});
+await pg.click('[data-b=send]');await pg.waitForSelector('.sendl');
+await pg.locator('input[name=dp]').nth(0).check();await pg.locator('input[name=dm][value=copy]').check();await pg.click('#sg');await pg.waitForTimeout(500);
+const r=await pg.evaluate(()=>{const ps=__fur.S.ses.doc.pages;return {dest:ps[0].type+':'+(ps[0].blocks||[]).map(b=>b.type).join(),src:ps[ps.length-1].objects.length}});
+ok('2: shakl rasm sifatida hujjat sahifasiga nusxalandi',/image/.test(r.dest)||/board/.test(r.dest),JSON.stringify(r));
+ok('2: nusxada asl qoldi',r.src===1);
+ok('xatolar yo‘q',errs.length===0,errs.join('|'));
+console.log('\n'+pass+' o‘tdi, '+fail+' yiqildi');await b.close();process.exit(fail?1:0);})();

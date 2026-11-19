@@ -1,0 +1,31 @@
+const {chromium}=require('/opt/npm-tools/node_modules/playwright');
+const SHOT=process.argv[2]||'/home/claude/fur-platform/docs/shots8';require('fs').mkdirSync(SHOT,{recursive:true});
+let pass=0,fail=0;const ok=(n,c,x='')=>{c?pass++:fail++;console.log((c?'PASS ':'FAIL ')+n+(x?'  '+x:''));};
+(async()=>{
+const b=await chromium.launch();const ctx=await b.newContext({viewport:{width:1300,height:1100}});ctx.setDefaultTimeout(12000);
+await ctx.addInitScript(()=>{try{localStorage.setItem('fur.pview','list')}catch{}});
+const pg=await ctx.newPage();const errs=[];pg.on('pageerror',e=>errs.push(e.message));
+await pg.goto('http://localhost:8765/');await pg.waitForSelector('.empty');
+await pg.click('header [data-act=new]');await pg.fill('.dlg input','Qirqish');await pg.click('.dlg [data-x="1"]');await pg.waitForSelector('.docv');
+await pg.click('[data-sa=adddoc]');await pg.waitForTimeout(200);await pg.click('[data-sa=addboard]').catch(()=>{});await pg.waitForTimeout(200);
+await pg.waitForSelector('.pg.openable');await pg.locator('.pg.openable').nth(1).click();await pg.waitForSelector('#editor .ed');
+await pg.setInputFiles('#eimg','/home/claude/fur/im-1.png');await pg.waitForSelector('.imgf img');
+const nat=await pg.evaluate(()=>{const i=document.querySelector('.imgf img');return [i.naturalWidth,i.naturalHeight]});
+const h0=await pg.evaluate(()=>document.querySelector('.imgf img').getBoundingClientRect().height);
+await pg.locator('.imgf img').click();await pg.waitForSelector('[data-x=crop]');
+await pg.click('[data-x=crop]');await pg.waitForSelector('.cropdlg');
+await pg.evaluate(()=>{for(const [k,v] of [['l','20'],['r','10'],['t','25'],['b','0']]){const i=document.querySelector(`.cropdlg [data-k=${k}]`);i.value=v;i.dispatchEvent(new Event('input',{bubbles:true}))}});
+await pg.screenshot({path:SHOT+'/qirqish-oyna.png'});
+await pg.click('.cropdlg [data-a=ok]');await pg.waitForSelector('.imgc');await pg.waitForTimeout(300);
+const m=await pg.evaluate(()=>__fur.S.ses.doc.pages.filter(x=>x.type==='document')[0].blocks.find(b=>b.type==='image').crop);
+ok('1: crop modelga yozildi',m&&m.l===20&&m.r===10&&m.t===25&&m.b===0,JSON.stringify(m));
+const r=await pg.evaluate(()=>{const w=document.querySelector('.imgc').getBoundingClientRect();return [w.width,w.height]});
+const want=(nat[0]*0.7)/(nat[1]*0.75);
+ok('2: qirqilgan nisbat to‘g‘ri',Math.abs(r[0]/r[1]-want)<0.03,`${(r[0]/r[1]).toFixed(3)} vs ${want.toFixed(3)}`);
+await pg.screenshot({path:SHOT+'/qirqilgan-rasm.png'});
+// 4. asliga qaytarish
+await pg.locator('.imgc').click();await pg.click('[data-x=crop]');await pg.waitForSelector('.cropdlg');await pg.click('.cropdlg [data-a=reset]');await pg.waitForTimeout(300);
+const m2=await pg.evaluate(()=>__fur.S.ses.doc.pages.filter(x=>x.type==='document')[0].blocks.find(b=>b.type==='image').crop);
+ok('4: asliga qaytarildi',m2===undefined&&(await pg.locator('.imgc').count())===0);
+ok('xatolar yo‘q',errs.length===0,errs.join('|'));
+console.log('\n'+pass+' o‘tdi, '+fail+' yiqildi');await b.close();process.exit(fail?1:0);})();

@@ -28,3 +28,16 @@ Kompyuterda: `cd relay && npm install && node server.js 8883`. Ilovada Server: `
 ## Qo'shilish tugmalari
 - O'qituvchi doskaga yozsa/ko'rsatsa, o'quvchilar real vaqtda ko'radi (faqat ko'rish).
 - O'quvchi qo'l ko'tarishi mumkin. Taqdimotda lazer va qalam ham ko'rinadi.
+
+## Ovoz, kamera, birga yozish va yozib olish (yangi)
+
+**Ovoz va kamera.** Jonli dars oynasida (“Jonli dars” tugmasi yoki ekran burchagidagi yashil “Jonli” belgisi):
+- **🎤 Mening mikrofonim / 📷 Mening kamerám** — ustoz o‘z ovozi/videosini yoqadi; hamma o‘quvchi eshitadi/ko‘radi. Taqdimot panelida ham shu tugmalar bor.
+- Ro‘yxatda har bir o‘quvchi yonida **🎤 📷 ✎** tugmalari — faqat shu o‘quvchiga mikrofon / kamera / doskaga yozish ruxsati. “Hammaga …” va “Hammadan olish” tugmalari ham bor. Ruxsatni istalgan payt qaytarib olasiz — o‘quvchi mikrofoni darrov o‘chadi.
+- O‘quvchi ruxsat bo‘lmasa mikrofon tugmasini bossa “Ustoz hali ruxsat bermagan” deb chiqadi; ruxsatdan keyin tugmani bosib o‘zi yoqadi (qurilmaning ruxsat so‘rovi bir marta chiqadi).
+- Ovoz/video faqat ustoz ↔ o‘quvchi o‘rtasida (o‘quvchilar bir-birini eshitmaydi). Shifrlangan dars kanali faqat “signal” uchun, ovoz bevosita qurilmalar orasida o‘tadi. Bepul STUN serveridan foydalaniladi; juda qattiq tarmoqlarda (ba’zi operator NAT’lari) ulanmasligi mumkin — TURN server kerak bo‘ladi (bepul emas).
+- **Android:** bu uchun yangi APK (`furApkLevel=2`) kerak — mikrofon/kamera ruxsatlari APK ichida. Eski APK’da veb‑yangilanish ishlayveradi, faqat mikrofon/kamera “ruxsat berilmadi” deydi.
+
+**Doskaga birga yozish.** Ro‘yxatdagi ✎ ruxsati bo‘lgan o‘quvchi taqdimot panelida ✎ tugmasini bosadi, rang tanlaydi va barmoq bilan chizadi. Chiziq ustozning doskasiga yoziladi va hammaga ko‘rinadi; “↶” faqat o‘zining oxirgi chizgani uchun. Yozish paytida ko‘rinish (masshtab) qotiriladi — chizgan sari ekran siljimaydi. Faqat doska sahifalarida.
+
+**Darsni yozib olish (taqdimotda ● tugmasi).** Telefon ekranini emas, faqat **taqdimotdagi sahifaning o‘zini** (qalam, lazer, zoom bilan) va **ustoz ovozini** yozadi — boshqa ilovaga chiqsangiz yoki qidirsangiz yozuvga tushmaydi. Qayta bosilganda `.webm` fayl saqlanadi (taxminan 6–7 MB/daqiqa). Mikrofon yo‘q bo‘lsa ovozsiz yoziladi (ogohlantirish chiqadi).

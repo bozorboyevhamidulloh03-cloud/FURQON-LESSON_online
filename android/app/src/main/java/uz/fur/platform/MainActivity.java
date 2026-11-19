@@ -1,6 +1,8 @@
 package uz.fur.platform;
 
+import android.Manifest;
 import android.app.Activity;
+import android.content.pm.PackageManager;
 import android.content.ClipData;
 import android.content.Intent;
 import android.net.Uri;
@@ -137,7 +139,43 @@ public class MainActivity extends Activity {
         public void onHideCustomView() { hideCustom(); }
 
         @Override
-        public void onPermissionRequest(PermissionRequest r) { r.deny(); }
+        public void onPermissionRequest(final PermissionRequest r) { runOnUiThread(() -> mediaRequest(r)); }
+
+        @Override
+        public void onPermissionRequestCanceled(PermissionRequest r) { if (pendingPerm == r) pendingPerm = null; }
+    }
+
+    // ---------- mikrofon / kamera (jonli dars, yozib olish) — faqat o'z sahifamiz uchun ----------
+    private static final int REQ_MEDIA = 77;
+    private PermissionRequest pendingPerm;
+
+    private void mediaRequest(PermissionRequest r) {
+        if (!r.getOrigin().toString().startsWith("https://" + HOST)) { r.deny(); return; }
+        java.util.ArrayList<String> need = new java.util.ArrayList<>();
+        for (String res : r.getResources()) {
+            if (PermissionRequest.RESOURCE_AUDIO_CAPTURE.equals(res)) need.add(Manifest.permission.RECORD_AUDIO);
+            else if (PermissionRequest.RESOURCE_VIDEO_CAPTURE.equals(res)) need.add(Manifest.permission.CAMERA);
+        }
+        if (need.isEmpty()) { r.deny(); return; }
+        boolean all = true;
+        for (String p : need) if (checkSelfPermission(p) != PackageManager.PERMISSION_GRANTED) all = false;
+        if (all) { r.grant(r.getResources()); return; }
+        if (pendingPerm != null) pendingPerm.deny();
+        pendingPerm = r;
+        requestPermissions(need.toArray(new String[0]), REQ_MEDIA);
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int req, String[] perms, int[] results) {
+        super.onRequestPermissionsResult(req, perms, results);
+        if (req != REQ_MEDIA || pendingPerm == null) return;
+        PermissionRequest r = pendingPerm; pendingPerm = null;
+        java.util.ArrayList<String> ok = new java.util.ArrayList<>();
+        for (String res : r.getResources()) {
+            String need = PermissionRequest.RESOURCE_AUDIO_CAPTURE.equals(res) ? Manifest.permission.RECORD_AUDIO : PermissionRequest.RESOURCE_VIDEO_CAPTURE.equals(res) ? Manifest.permission.CAMERA : null;
+            if (need != null && checkSelfPermission(need) == PackageManager.PERMISSION_GRANTED) ok.add(res);
+        }
+        if (ok.isEmpty()) r.deny(); else r.grant(ok.toArray(new String[0]));
     }
 
     private void hideCustom() {

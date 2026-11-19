@@ -1,8 +1,10 @@
+import { cropDialog, cropAspect } from './imgcrop';
+import { objectsToBlocks, pagePicker } from './clip';
 import { drawObject, objBounds } from './boardrender';
 import { FurDocument, FurObject, FurPage, ImageObj, ShapeObj, StrokeObj, TextObj, uid } from '../../packages/fur-format/src/index';
 
-export interface BoardHost { doc: FurDocument; page: FurPage; index: number; onChange(): void; toast(m: string, bad?: boolean): void; ask(t: string, v?: string, ok?: string): Promise<string | null> }
-export interface BoardHandle { destroy(): void; fit(): void }
+export interface BoardHost { doc: FurDocument; page: FurPage; index: number; onChange(): void; focus?(u: number, v: number): void; toast(m: string, bad?: boolean): void; ask(t: string, v?: string, ok?: string): Promise<string | null> }
+export interface BoardHandle { destroy(): void; fit(): void; refresh?(): void }
 type Tool = 'select' | 'hand' | 'pen' | 'hl' | 'eraser' | 'line' | 'arrow' | 'rect' | 'ellipse' | 'text';
 type P = [number, number];
 
@@ -36,6 +38,8 @@ export function mountBoard(root: HTMLElement, h: BoardHost): BoardHandle {
     <button class="tb" data-b="image" title="Rasm qo‘shish" aria-label="Rasm qo‘shish">${ico('<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="1.500"/><path d="M4 18l5-5 4 4 3-3 4 4"/>')}</button><span class="tsep"></span>
     <span class="swatches" id="sw">${COLORS.map(c => `<button class="sw" data-c="${c}" style="background:${c}" title="Rang ${c}" aria-label="Rang ${c}"></button>`).join('')}<label class="sw cust" title="Boshqa rang"><input type="color" id="bcol" value="#e03131"></label></span><span class="tsep"></span>
     <span class="wds" id="wd">${WIDTHS.map((w, i) => `<button class="tb wdb" data-w="${i}" title="Qalinlik ${w}" aria-label="Qalinlik ${w}"><i style="height:${w + 1}px"></i></button>`).join('')}</span><span class="tsep"></span>
+    <button class="tb" data-b="crop" title="Tanlangan rasmni qirqish" aria-label="Qirqish"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 2v14a2 2 0 002 2h14M2 6h14a2 2 0 012 2v14"/></svg></button>
+    <button class="tb" data-b="send" title="Tanlanganni boshqa sahifaga nusxalash yoki ko‘chirish" aria-label="Boshqa sahifaga"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="12" height="14" rx="2"/><path d="M9 21h10a2 2 0 002-2V9M13 11l4 4-4 4" /></svg></button>
     <button class="tb" data-b="undo" title="Orqaga (Ctrl+Z)" aria-label="Orqaga">${ico('<path d="M9 14L4 9l5-5"/><path d="M4 9h11a5 5 0 010 10h-3"/>')}</button>
     <button class="tb" data-b="redo" title="Oldinga (Ctrl+Y)" aria-label="Oldinga">${ico('<path d="M15 14l5-5-5-5"/><path d="M20 9H9a5 5 0 000 10h3"/>')}</button>
     <button class="tb dng" data-b="del" title="Tanlanganni o‘chirish (Delete)" aria-label="O‘chirish">${ico('<path d="M5 7h14M10 7V4h4v3M7 7l1 13h8l1-13"/>')}</button><span class="tsep"></span>
@@ -99,6 +103,7 @@ export function mountBoard(root: HTMLElement, h: BoardHost): BoardHandle {
   const ro = new ResizeObserver(resize); ro.observe(wrap);
 
   // ---------- holat ----------
+  function focusOn(o: FurObject | undefined) { if (!o || !h.focus) return; const g = cv.getContext('2d'); if (!g) return; const [a, b, e, f] = objBounds(g, o); h.focus((a + e) / 2, (b + f) / 2); }
   function commit() { const s = JSON.stringify(page.objects); if (s === undo[ui]) return; undo.length = ui + 1; undo.push(s); if (undo.length > 120) undo.shift(); ui = undo.length - 1; h.onChange(); syncUi(); }
   function applyState(i: number) { ui = i; page.objects.splice(0, page.objects.length, ...(JSON.parse(undo[i]) as FurObject[])); if (sel && !page.objects.some(o => o.id === sel)) sel = null; h.onChange(); syncUi(); redraw(); }
   function syncUi() {
@@ -161,8 +166,8 @@ export function mountBoard(root: HTMLElement, h: BoardHost): BoardHandle {
     if (mode === 'draw' && cur) {
       const o = cur; cur = null;
       const tiny = o.t !== 'stroke' && Math.hypot((o as ShapeObj).x2 - (o as ShapeObj).x1, (o as ShapeObj).y2 - (o as ShapeObj).y1) * v.s < 4;
-      if (!tiny) { page.objects.push(o); commit(); }
-    } else if (mode === 'move' && moved) commit(); else if (mode === 'erase' && erased) commit();
+      if (!tiny) { page.objects.push(o); commit(); focusOn(o); }
+    } else if (mode === 'move' && moved) { commit(); focusOn(page.objects.find(x => x.id === sel)); } else if (mode === 'erase' && erased) commit();
     mode = 'none'; redraw();
   };
   cv.addEventListener('pointerup', up); cv.addEventListener('pointercancel', e => { cur = null; up(e); });
@@ -203,6 +208,12 @@ export function mountBoard(root: HTMLElement, h: BoardHost): BoardHandle {
       case 'del': delSel(); break; case 'zin': zoomAt(1.25, W / 2, H / 2); break; case 'zout': zoomAt(0.8, W / 2, H / 2); break; case 'fit': fit(); break;
       case 'bg': page.bg = BGS[(BGS.indexOf(page.bg) + 1) % 3]; h.onChange(); syncUi(); redraw(); break;
       case 'image': root.querySelector<HTMLInputElement>('#bimg')!.click(); break;
+      case 'send': { const o = page.objects.find(x => x.id === sel); if (!o) { h.toast('Avval “Tanlash” bilan obyektni bosing'); break; } if (doc.pages.length < 2) { h.toast('Boshqa sahifa yo‘q. Avval sahifa qo‘shing', true); break; } void pagePicker(doc, h.index, 'Tanlangan obyekt').then(async r => { if (!r) return; const dp = doc.pages[r.dest]; if (!dp) return; const cp = JSON.parse(JSON.stringify(o)) as FurObject;
+          if (dp.type === 'document') { const bl = await objectsToBlocks(doc, [cp]); if (dp.blocks.length === 1 && dp.blocks[0].type === 'paragraph' && !dp.blocks[0].runs.length) dp.blocks.splice(0, 1); dp.blocks.push(...bl); }
+          else { cp.id = uid('o'); dp.objects.push(cp); }
+          if (r.move) { const i = page.objects.findIndex(x => x.id === o.id); if (i >= 0) page.objects.splice(i, 1); sel = null; commit(); redraw(); } else h.onChange();
+          h.toast(`${r.dest + 1}-sahifaga ${r.move ? 'ko‘chirildi' : 'nusxalandi'}`); }); break; }
+      case 'crop': { const o = page.objects.find(x => x.id === sel); if (!o || o.t !== 'image') { h.toast('Avval doskadagi rasmni tanlang (Tanlash asbobi)'); break; } const im = getImg(o.a); const a = h.doc.assets.find(z => z.id === o.a); if (!im || !a) break; const u = URL.createObjectURL(new Blob([a.data as BlobPart], { type: a.mime })); void cropDialog(u, o.crop).then(r => { URL.revokeObjectURL(u); if (r === undefined) return; const w0 = o.w; if (r) o.crop = r; else delete o.crop; o.h = Math.round(w0 / cropAspect(im.naturalWidth, im.naturalHeight, o.crop)); commit(); redraw(); }); break; }
     }
   });
   root.querySelector('#bcol')!.addEventListener('input', e => { color = (e.target as HTMLInputElement).value; root.querySelectorAll('[data-c]').forEach(b => b.classList.remove('on')); if (tool === 'eraser' || tool === 'hand' || tool === 'select') setTool('pen'); });
@@ -220,5 +231,5 @@ export function mountBoard(root: HTMLElement, h: BoardHost): BoardHandle {
   document.addEventListener('keydown', kd); document.addEventListener('keyup', ku);
   syncUi(); resize();
   (window as any).__board = { page, get v() { return v; }, fit, tool: () => tool, setTool, undoLen: () => undo.length };
-  return { fit, destroy() { document.removeEventListener('keydown', kd); document.removeEventListener('keyup', ku); ro.disconnect(); cancelAnimationFrame(raf); urls.forEach(u => URL.revokeObjectURL(u)); } };
+  return { fit, refresh() { if (sel && !page.objects.some(o => o.id === sel)) sel = null; commit(); redraw(); }, destroy() { document.removeEventListener('keydown', kd); document.removeEventListener('keyup', ku); ro.disconnect(); cancelAnimationFrame(raf); urls.forEach(u => URL.revokeObjectURL(u)); } };
 }

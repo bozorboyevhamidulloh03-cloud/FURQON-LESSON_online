@@ -9,7 +9,7 @@ export function drawObject(g: CanvasRenderingContext2D, o: FurObject, inkC: (c: 
     } g.restore(); return;
   }
   if (o.t === 'text') { g.save(); g.fillStyle = inkC(o.c); g.font = `${o.s}px system-ui,sans-serif`; g.textBaseline = 'top'; o.tx.split('\n').forEach((l, i) => g.fillText(l, o.x, o.y + i * o.s * 1.25)); g.restore(); return; }
-  if (o.t === 'image') { const im = getImg(o.a); if (im) g.drawImage(im, o.x, o.y, o.w, o.h); else { g.save(); g.fillStyle = 'rgba(128,128,128,.15)'; g.fillRect(o.x, o.y, o.w, o.h); g.restore(); } return; }
+  if (o.t === 'image') { const im = getImg(o.a); if (im) { const c = o.crop, nw = im.naturalWidth, nh = im.naturalHeight; if (c) g.drawImage(im, nw * c.l / 100, nh * c.t / 100, nw * (1 - (c.l + c.r) / 100), nh * (1 - (c.t + c.b) / 100), o.x, o.y, o.w, o.h); else g.drawImage(im, o.x, o.y, o.w, o.h); } else { g.save(); g.fillStyle = 'rgba(128,128,128,.15)'; g.fillRect(o.x, o.y, o.w, o.h); g.restore(); } return; }
   g.save(); g.strokeStyle = inkC(o.c); g.lineWidth = o.w;
   if (o.t === 'line' || o.t === 'arrow') {
     g.beginPath(); g.moveTo(o.x1, o.y1); g.lineTo(o.x2, o.y2); g.stroke();

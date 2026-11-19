@@ -4,6 +4,8 @@ import { mountEditor, EditorHandle } from './editor';
 import { mountBoard, BoardHandle } from './board';
 import { startPresentation } from './present';
 import { startTeacher, joinClass, TeacherSession } from './classroom';
+import { startRecorder, recSupported, Rec } from './recorder';
+import { PresentHandle } from './present';
 import { fmtCode, customBroker, setCustomBroker, BROKERS } from './room';
 import { sniff, importPdf, importPdfText, importDocx, importImage } from './importers';
 import * as db from './db';
@@ -104,13 +106,13 @@ async function importFiles(files: FileList | File[]) {
 }
 interface FurNativeApi { saveFile(name: string, mime: string, b64: string, last: boolean): void; version(): string; checkUpdate(): void; openExternal(u: string): void }
 const native = (): FurNativeApi | null => (window as unknown as { FurNative?: FurNativeApi }).FurNative ?? null;
-function download(bytes: Uint8Array, name: string) {
-  const fname = name.replace(/[\\/:*?"<>|]/g, '_') + '.fur', nat = native();
+function download(bytes: Uint8Array, name: string, ext = '.fur', mime = 'application/octet-stream') {
+  const fname = name.replace(/[\\/:*?"<>|]/g, '_') + ext, nat = native();
   if (nat) { // Android ilovasi: blob yuklab olish ishlamaydi, fayl mahalliy "Saqlash" oynasi orqali yoziladi
-    const CH = 3 * 256 * 1024; for (let i = 0; i < bytes.length; i += CH) { let bin = ''; const part = bytes.subarray(i, i + CH); for (let k = 0; k < part.length; k += 8192) bin += String.fromCharCode(...part.subarray(k, k + 8192)); nat.saveFile(fname, 'application/octet-stream', btoa(bin), i + CH >= bytes.length); }
-    if (!bytes.length) nat.saveFile(fname, 'application/octet-stream', '', true); return;
+    const CH = 3 * 256 * 1024; for (let i = 0; i < bytes.length; i += CH) { let bin = ''; const part = bytes.subarray(i, i + CH); for (let k = 0; k < part.length; k += 8192) bin += String.fromCharCode(...part.subarray(k, k + 8192)); nat.saveFile(fname, mime, btoa(bin), i + CH >= bytes.length); }
+    if (!bytes.length) nat.saveFile(fname, mime, '', true); return;
   }
-  const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([bytes as unknown as BlobPart], { type: 'application/octet-stream' }));
+  const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([bytes as unknown as BlobPart], { type: mime }));
   a.download = fname; document.body.append(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 3000);
 }
 async function menuAction(act: string, id: string) {
@@ -162,6 +164,7 @@ async function sesAction(act: string, arg?: string) {
   if (act === 'addboard' || act === 'adddoc') { const t: PageType = act === 'addboard' ? 'board' : 'document'; s.doc.pages.push(newPage(t, '')); }
   else if (act === 'delpage') { if (s.doc.pages.length < 2) return toast('Kamida bitta sahifa qolishi kerak', true); s.doc.pages.splice(Number(arg), 1); }
   else if (act === 'up' || act === 'down') { const i = Number(arg), j = act === 'up' ? i - 1 : i + 1; if (j < 0 || j >= s.doc.pages.length) return; [s.doc.pages[i], s.doc.pages[j]] = [s.doc.pages[j], s.doc.pages[i]]; }
+  else if (act === 'moveto') { const [a, b] = (arg ?? '').split(':').map(Number), n = s.doc.pages.length; if (!(a >= 0 && a < n && b >= 0 && b < n) || a === b) return; const [pp] = s.doc.pages.splice(a, 1); s.doc.pages.splice(b, 0, pp); }
   else if (act === 'live') return void liveDialog();
   else if (act === 'present') return present(0);
   else if (act === 'export') { await persist(); download(await serializeFur(s.doc), s.doc.title); return toast('Eksport qilindi'); }
@@ -203,7 +206,7 @@ function home(): string {
     : S.section === 'trash' ? `<div class="empty"><h2>Savat bo‘sh</h2><p>O‘chirilgan darslar shu yerda turadi va tiklanishi mumkin.</p></div>`
     : S.section === 'fav' ? `<div class="empty"><h2>Sevimlilar yo‘q</h2><p>Dars kartochkasidagi yulduzchani bosing.</p></div>`
     : `<div class="empty"><svg viewBox="0 0 120 90" width="120" aria-hidden="true"><rect x="22" y="14" width="64" height="66" rx="8" fill="var(--card)" stroke="var(--line)"/><rect x="34" y="6" width="64" height="66" rx="8" fill="var(--card)" stroke="var(--line)"/><path d="M46 30h40M46 42h40M46 54h24" stroke="var(--accent)" stroke-width="3" stroke-linecap="round"/></svg><h2>Birinchi darsingizni yarating</h2><p>Hujjat va doskadan iborat dars bitta .fur faylda saqlanadi. Hammasi shu qurilmada, akkauntsiz.</p><button class="btn pri" data-act="new">${IC.plus} Yangi dars</button></div>`;
-  return `<div class="shell"><aside class="side"><div class="brand"><span class="logo">F</span><b>FUR</b><small>Platform</small></div>
+  return `<div class="shell"><aside class="side"><div class="brand"><img class="logoimg" src="icon-96.png" alt="" width="34" height="34"><b>FURQON</b><small>Online</small></div>
   <nav>${nav('all', IC.home, 'Darslar', live.length)}${nav('recent', IC.clock, 'So‘nggi')}${nav('fav', IC.star, 'Sevimlilar', favN)}${nav('trash', IC.trash, 'O‘chirilganlar', trashN)}</nav>
   <div class="grow"></div><div class="stor"><div class="bar"><i style="width:${pct}%"></i></div><small>${est ? `${fmtSize(est.usage)} ishlatilgan` : 'Xotira'}${est?.quota ? ` · ${fmtSize(est.quota)} dan` : ''}</small></div>
   <button class="nav" data-act="theme">${IC.moon}<span>Mavzu</span></button></aside>
@@ -241,7 +244,7 @@ function updatePill() {
 }
 function refreshRoster() {
   updatePill(); const ul = document.getElementById('rost'); if (!ul || !live) return; const r = live.roster();
-  ul.innerHTML = r.length ? r.map(x => `<li class="${x.hand ? 'hand' : ''}">${x.hand ? '✋ ' : ''}${esc(x.name)}</li>`).join('') : '<li class="mut">Hali hech kim qo‘shilmadi</li>';
+  const mm = live.media.supported; ul.innerHTML = r.length ? r.map(x => `<li class="${x.hand ? 'hand' : ''}"><span class="rn">${x.hand ? '✋ ' : ''}${esc(x.name)}${x.mic ? ' 🎤' : ''}${x.cam ? ' 📷' : ''}</span>${mm ? `<button class="tb ${x.aMic ? 'on' : ''}" data-pm="${esc(x.id)}:mic" title="Mikrofon ruxsati">🎤</button><button class="tb ${x.aCam ? 'on' : ''}" data-pm="${esc(x.id)}:cam" title="Kamera ruxsati">📷</button>` : ''}<button class="tb ${x.aWr ? 'on' : ''}" data-pm="${esc(x.id)}:wr" title="Doskaga yozish ruxsati">✎</button></li>`).join('') : '<li class="mut">Hali hech kim qo‘shilmadi</li>';
   const c = document.getElementById('rcount'); if (c) c.textContent = String(r.length);
 }
 function endLive() { live?.end(); live = null; updatePill(); toast('Jonli dars tugatildi'); }
@@ -255,13 +258,21 @@ async function liveDialog() {
     const srv = srvVal;
     try {
       setCustomBroker((srv ?? '').trim());
-      live = await startTeacher(() => S.ses?.doc ?? null, () => (S.view === 'edit' ? S.pageIdx : 0), refreshRoster, n => toast(`✋ ${n} qo‘l ko‘tardi`));
+      live = await startTeacher(() => S.ses?.doc ?? null, () => (S.view === 'edit' ? S.pageIdx : 0), refreshRoster, n => toast(`✋ ${n} qo‘l ko‘tardi`), i => { if (S.view === 'edit' && S.pageIdx === i) (S.editor as unknown as BoardHandle | null)?.refresh?.(); });
       updatePill();
     } catch (e) { live = null; return void toast('Jonli dars boshlanmadi: ' + (e as Error).message, true); }
   }
   const L = live!; const host = L.broker.replace(/^wss?:\/\//, '').replace(/[:/].*$/, '');
-  void modal<string>(`<h3>Jonli dars</h3><p class="mut">O‘quvchilar ilovada <b>“Darsga qo‘shilish”</b> tugmasini bosib, shu kodni kiritadi:</p><div class="bigcode" id="bcode">${fmtCode(L.code)}</div><div class="row"><button class="btn" data-v="copy">Kodni nusxalash</button></div><p class="mut small">Server: ${esc(host)} · xabarlar shifrlangan</p><h4>Qatnashuvchilar (<span id="rcount">0</span>)</h4><ul class="rost" id="rost"></ul><div class="row"><button class="btn dng" data-v="end">Darsni tugatish</button><button class="btn pri" data-v="close">Yopish</button></div>`, (box, done) => {
+  void modal<string>(`<h3>Jonli dars</h3><p class="mut">O‘quvchilar ilovada <b>“Darsga qo‘shilish”</b> tugmasini bosib, shu kodni kiritadi:</p><div class="bigcode" id="bcode">${fmtCode(L.code)}</div><div class="row"><button class="btn" data-v="copy">Kodni nusxalash</button></div><p class="mut small">Server: ${esc(host)} · xabarlar shifrlangan</p><h4>Qatnashuvchilar (<span id="rcount">0</span>)</h4><ul class="rost" id="rost"></ul>${L.media.supported ? `<p class="mut small">🎤/📷 tugmalari — o‘quvchiga mikrofon/kamera ruxsati. Ruxsatni istalgan payt qaytarib olasiz.</p><div class="row wrap"><button class="btn ${L.media.mic() ? 'pri' : ''}" data-m="mic">🎤 Mening mikrofonim</button><button class="btn ${L.media.cam() ? 'pri' : ''}" data-m="cam">📷 Mening kamerám</button></div><div class="row wrap"><button class="btn" data-m="allmic">Hammaga mikrofon</button><button class="btn" data-m="allcam">Hammaga kamera</button><button class="btn" data-m="allwr">Hammaga yozish</button><button class="btn" data-m="none">Hammadan olish</button></div>` : '<p class="mut small">Bu qurilmada ovoz/video qo‘llab-quvvatlanmaydi.</p>'}<div class="row"><button class="btn dng" data-v="end">Darsni tugatish</button><button class="btn pri" data-v="close">Yopish</button></div>`, (box, done) => {
     refreshRoster();
+    box.addEventListener('click', e => {
+      const t = e.target as HTMLElement, pm = t.closest<HTMLElement>('[data-pm]')?.dataset.pm, mm = t.closest<HTMLElement>('[data-m]');
+      if (pm) { const [id, k] = pm.split(':'), en = L.roster().find(x => x.id === id); if (en) L.media.perm(id, k === 'mic' ? { mic: !en.aMic } : k === 'wr' ? { wr: !en.aWr } : { cam: !en.aCam }); return; }
+      if (!mm) return; const a = mm.dataset.m!;
+      if (a === 'mic') void L.media.setMic(!L.media.mic()).then(() => mm.classList.toggle('pri', L.media.mic()), er => toast((er as Error).message, true));
+      else if (a === 'cam') void L.media.setCam(!L.media.cam()).then(() => mm.classList.toggle('pri', L.media.cam()), er => toast((er as Error).message, true));
+      else if (a === 'allmic') L.media.permAll({ mic: true }); else if (a === 'allcam') L.media.permAll({ cam: true }); else if (a === 'allwr') L.media.permAll({ wr: true }); else if (a === 'none') L.media.permAll({ mic: false, cam: false, wr: false });
+    });
     box.querySelectorAll<HTMLElement>('[data-v]').forEach(b => b.addEventListener('click', () => { const v = b.dataset.v; if (v === 'copy') { void navigator.clipboard?.writeText(fmtCode(L.code) + (L.code[0] === '9' && L.broker ? ' ' + L.broker : '')).then(() => toast('Kod nusxalandi'), () => toast('Nusxalab bo‘lmadi, kodni qo‘lda yozing', true)); } else { if (v === 'end') endLive(); done(v!); } }));
   });
 }
@@ -280,9 +291,23 @@ async function joinDialog() {
     box.querySelector('[data-v=go]')!.addEventListener('click', () => void go()); q('jc').addEventListener('keydown', e => { if (e.key === 'Enter') void go(); }); q('jc').focus();
   });
 }
+const fmtDur = (ms: number) => { const t = Math.round(ms / 1000); return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`; };
+async function finishRec(r: Rec, title: string) {
+  const out = await r.stop(); if (!out.blob.size) return toast('Yozuv bo‘sh chiqdi', true);
+  const ext = out.mime.includes('mp4') ? 'mp4' : 'webm'; download(new Uint8Array(await out.blob.arrayBuffer()), title + ' — dars yozuvi', '.' + ext, out.mime);
+  toast(`Yozuv saqlandi (${fmtDur(out.ms)}, ${(out.blob.size / 1048576).toFixed(1)} MB)`);
+}
 function present(from: number) {
   const ses = S.ses; if (!ses) return; if (!ses.doc.pages.length) return toast('Sahifa yo‘q');
-  startPresentation(ses.doc, from, () => { render(); }, live ? { hooks: live.hooks } : {});
+  let rec: Rec | null = null, tick = 0; const L = live;
+  const view: PresentHandle = startPresentation(ses.doc, from, () => { clearInterval(tick); if (rec) void finishRec(rec, ses.doc.title); rec = null; render(); }, { ...(L ? { hooks: L.hooks } : {}), media: !!L?.media.supported, record: recSupported(), onBtn: b => {
+    if (b === 'rec') { void (async () => {
+      if (rec) { const r = rec; rec = null; clearInterval(tick); view.btn('rec', { on: false, title: 'Darsni yozib olish' }); await finishRec(r, ses.doc.title); return; }
+      try { rec = await startRecorder(view, L?.media.micTrack()); } catch (e) { return void toast((e as Error).message, true); }
+      toast(rec.audio ? 'Yozish boshlandi (faqat shu sahifa + ovozingiz)' : 'Yozish boshlandi — mikrofon yo‘q, ovozsiz', !rec.audio); view.btn('rec', { on: true, title: 'To‘xtatish va saqlash' });
+      tick = window.setInterval(() => { if (rec) view.status(`● REC ${fmtDur(rec.elapsed())}`); }, 1000);
+    })(); } else if (L) L.onBtn(b, view);
+  } });
 }
 function openPage(i: number) {
   const p = S.ses!.doc.pages[i]; if (!p) return;
@@ -293,8 +318,8 @@ function render() {
   const keepQ = document.activeElement?.id === 'q', pos = (document.getElementById('q') as HTMLInputElement | null)?.selectionStart ?? 0;
   root.innerHTML = S.view === 'home' ? home() : S.view === 'doc' ? docView() : editView();
   if (S.view !== 'home') updateStatus();
-  if (S.view === 'edit' && S.ses) { const ses = S.ses; const hp = { doc: ses.doc, page: ses.doc.pages[S.pageIdx], index: S.pageIdx, onChange: changed, toast, ask: askText }; const el = document.getElementById('editor')!; S.editor = hp.page.type === 'board' ? mountBoard(el, hp) : mountEditor(el, hp); }
-  if (S.view === 'doc' && S.ses && S.pview === 'grid') { const h = document.getElementById('pgridhost'); if (h) S.grid = mountPageGrid(h, S.ses.doc); }
+  if (S.view === 'edit' && S.ses) { const ses = S.ses; const hp = { doc: ses.doc, page: ses.doc.pages[S.pageIdx], index: S.pageIdx, onChange: changed, focus: (u: number, v: number) => live?.focus(S.pageIdx, u, v), toast, ask: askText }; const el = document.getElementById('editor')!; S.editor = hp.page.type === 'board' ? mountBoard(el, hp) : mountEditor(el, hp); }
+  if (S.view === 'doc' && S.ses && S.pview === 'grid') { const h = document.getElementById('pgridhost'); if (h) S.grid = mountPageGrid(h, S.ses.doc, (a, b) => void sesAction('moveto', a + ':' + b)); }
   if (keepQ) { const q = document.getElementById('q') as HTMLInputElement; q.focus(); q.setSelectionRange(pos, pos); }
 }
 

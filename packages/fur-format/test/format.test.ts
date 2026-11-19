@@ -1,4 +1,4 @@
-import { FurError, newDocument, splitRuns, patchRuns, setFlag, allHave, replaceRange, plainText, newPage, parseFur, serializeFur, writeZip, FurDocument, uid } from '../src/index';
+import { cleanCrop, FurError, newDocument, splitRuns, patchRuns, setFlag, allHave, replaceRange, plainText, newPage, parseFur, serializeFur, writeZip, FurDocument, uid } from '../src/index';
 import { readFileSync } from 'node:fs';
 let pass = 0, fail = 0;
 const ok = (n: string, c: boolean, extra = '') => { c ? pass++ : fail++; console.log((c ? 'PASS ' : 'FAIL ') + n + (extra ? '  ' + extra : '')); };
@@ -72,5 +72,13 @@ const bad2 = { id: 'x', type: 'document', blocks: [{ type: 'paragraph', text: 'e
   ok('wrap: front + x/y saqlandi', wr[0].wrap === 'front' && wr[0].x === 12.5 && wr[0].y === 340);
   ok('wrap: left saqlandi (x/y yo‘q)', wr[1].wrap === 'left' && wr[1].x === undefined);
   ok('wrap: noto‘g‘ri qiymat tashlandi', wr[2].wrap === undefined && wr[2].x === undefined);
+  // rasm qirqish
+  const cd = newDocument('crop'); const cp = cd.pages[0]; cp.type = 'document'; cd.assets.push({ id: 'a1', mime: 'image/png', data: new Uint8Array([137, 80, 78, 71]) });
+  cp.blocks.push({ id: 'c1', type: 'image', a: 'a1', w: 50, align: 'center', caption: [], crop: { l: 10, t: 5, r: 20, b: 0 } });
+  const cb = (await parseFur(await serializeFur(cd))).doc.pages[0].blocks as any[];
+  ok('crop: saqlandi', JSON.stringify(cb[0].crop) === JSON.stringify({ l: 10, t: 5, r: 20, b: 0 }));
+  const bigc = cleanCrop({ l: 80, t: 0, r: 80, b: 0 })!; ok('crop: 90% bilan cheklandi', Math.abs(bigc.l + bigc.r - 90) < 1e-9);
+  ok('crop: bo‘sh olib tashlandi', cleanCrop({ l: 0, t: 0, r: 0, b: 0 }) === undefined && cleanCrop('x') === undefined);
   console.log(`\n${pass} o‘tdi, ${fail} yiqildi`); process.exit(fail ? 1 : 0);
 })();
+

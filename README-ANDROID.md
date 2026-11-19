@@ -4,7 +4,7 @@
 - APK = WebView "qobiq" + ichida veb-paket. Ilova ishga tushganda `latest.json` ni tekshiradi.
 - Yangi versiya bo'lsa ilova "Yangilanish bor" deydi → bosasiz → zip yuklanadi, sha256 tekshiriladi, almashtiriladi. **Yangi APK shart emas.**
 - Yangilanish buzilsa (ilova ochilmasa) avtomatik oldingi versiyaga qaytadi.
-- Yangi APK faqat qobiq (Java) kodi o'zgarganda kerak (`android/gradle.properties` da `furApkLevel` ni oshiring).
+- Yangi APK faqat qobiq (Java/manifest) kodi o‘zgarganda kerak (`android/gradle.properties` da `furApkLevel` ni oshiring). `furApkLevel=2` — mikrofon/kamera ruxsatlari qo‘shilgan; `latest.json` da `minApk` ni 1 qoldiring, shunda eski APK ham veb‑yangilanishni oladi.
 
 ## Bir martalik sozlash
 1. GitHub'da **public** repo oching (public bo'lsa Pages bepul), masalan `fur-platform`.
