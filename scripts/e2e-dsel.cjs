@@ -1,0 +1,25 @@
+const {chromium}=require('/opt/npm-tools/node_modules/playwright');
+let pass=0,fail=0;const ok=(n,c,x='')=>{c?pass++:fail++;console.log((c?'PASS ':'FAIL ')+n+(x?'  '+x:''));};
+(async()=>{const b=await chromium.launch();const ctx=await b.newContext({viewport:{width:412,height:800},hasTouch:true,isMobile:true,deviceScaleFactor:2});ctx.setDefaultTimeout(12000);
+await ctx.addInitScript(()=>{try{localStorage.setItem('fur.pview','list')}catch{}});
+const pg=await ctx.newPage();const errs=[];pg.on('pageerror',e=>errs.push(e.message));
+await pg.goto('http://localhost:8765/');await pg.waitForSelector('.empty');
+await pg.click('header [data-act=new]');await pg.fill('.dlg input','Sensor');await pg.click('.dlg [data-x="1"]');await pg.waitForSelector('.docv');
+await pg.click('[data-sa=adddoc]');await pg.waitForSelector('.pg.openable');
+await pg.evaluate(()=>{const d=__fur.S.ses.doc.pages.find(x=>x.type==='document');d.blocks=['Birinchi qator matni','Ikkinchi qator matni','Uchinchi qator matni','To‘rtinchi qator'].map((t,i)=>({id:'b'+i,type:'paragraph',runs:[{t}]}));});
+await pg.locator('.pg.openable').nth(1).click();await pg.waitForSelector('#editor .ed');
+await pg.click('[data-cmd=dsel]');await pg.waitForTimeout(200);
+const eds=pg.locator('#editor .ed');const a=await eds.nth(0).boundingBox();
+const cdp=await ctx.newCDPSession(pg);
+const t=(type,x,y)=>cdp.send('Input.dispatchTouchEvent',{type,touchPoints:type==='touchEnd'?[]:[{x,y,id:1}]});
+await t('touchStart',a.x+5,a.y+8);
+await t('touchMove',a.x+20,a.y+20);await pg.waitForTimeout(250);
+let bb=await eds.nth(3).boundingBox();
+for(let k=1;k<=12;k++){bb=await eds.nth(3).boundingBox();await t('touchMove',a.x+20+(bb.x+60-a.x-20)*k/12,a.y+20+(bb.y+8-a.y-20)*k/12);await pg.waitForTimeout(40);}
+await t('touchEnd');await pg.waitForTimeout(200);
+const txt=await pg.evaluate(()=>getSelection().getRangeAt(0).toString());
+ok('barmoq bilan 4 qator belgilandi',/Birinchi/.test(txt)&&/Uchinchi/.test(txt)&&/To‘rt/.test(txt),JSON.stringify(txt));
+await pg.screenshot({path:'/home/claude/fur-platform/docs/shots8/sensor-belgilash.png'});
+await pg.click('[data-x=copy]');await pg.waitForTimeout(150);
+ok('xatolar yo‘q',errs.length===0,errs.join('|'));
+console.log('\n'+pass+' o‘tdi, '+fail+' yiqildi');await b.close();process.exit(fail?1:0);})();

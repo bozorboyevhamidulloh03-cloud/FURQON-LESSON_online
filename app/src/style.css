@@ -145,3 +145,5 @@ select{height:38px;border:1px solid var(--line);background:var(--card);border-ra
 
 .pres.writing .pres-stage{cursor:crosshair}.pres [data-p=write].on{color:#4dabf7}.pres .wdot{display:inline-block;width:18px;height:18px;border-radius:50%;border:2px solid #fff}
 .row.wrap{justify-content:flex-start}
+
+#editor.dsel,#editor .dsel,.dsel{touch-action:none;-webkit-user-select:text;user-select:text}.dsel .ed{touch-action:none}.tb.on[data-cmd=dsel]{background:#d0ebff}

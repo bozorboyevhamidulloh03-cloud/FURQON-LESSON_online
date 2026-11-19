@@ -63,7 +63,7 @@ export function mountEditor(root: HTMLElement, h: EditorHost): EditorHandle {
   ${(['left', 'center', 'right', 'justify'] as Align[]).map(a => btn('al-' + a, AL[a], 'Tekislash: ' + a)).join('')}<span class="tsep"></span>
   ${btn('bullet', ico('<circle cx="5" cy="7" r="1"/><circle cx="5" cy="12" r="1"/><circle cx="5" cy="17" r="1"/><path d="M10 7h10M10 12h10M10 17h10"/>'), 'Markerli ro‘yxat')}${btn('ordered', ico('<path d="M10 7h10M10 12h10M10 17h10M4 6h1v4M4 14h2l-2 3h2"/>'), 'Raqamli ro‘yxat')}${btn('outdent', ico('<path d="M10 6h10M10 12h10M10 18h10M7 9l-3 3 3 3"/>'), 'Chekinishni kamaytirish')}${btn('indent', ico('<path d="M10 6h10M10 12h10M10 18h10M4 9l3 3-3 3"/>'), 'Chekinishni oshirish')}<span class="tsep"></span>
   ${btn('table', ico('<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18M3 15h18M9 4v16M15 4v16"/>'), 'Jadval qo‘shish')}${btn('image', ico('<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="M4 18l5-5 4 4 3-3 4 4"/>'), 'Rasm qo‘shish')}<span class="tsep"></span>
-  ${btn('undo', ico('<path d="M9 7L4 12l5 5M4 12h10a6 6 0 010 12"/>'), 'Bekor qilish (Ctrl+Z)')}${btn('redo', ico('<path d="M15 7l5 5-5 5M20 12H10a6 6 0 000 12"/>'), 'Qaytarish (Ctrl+Y)')}${btn('copy', ico('<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 012-2h9"/>'), 'Nusxalash (Ctrl+C)')}${btn('cut', ico('<circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M20 4L8.1 15.9M14.5 14.5L20 20M8.1 8.1L12 12"/>'), 'Kesish (Ctrl+X)')}${btn('paste', ico('<path d="M9 4h6v3H9z"/><path d="M15 5h2a2 2 0 012 2v12a2 2 0 01-2 2H7a2 2 0 01-2-2V7a2 2 0 012-2h2"/>'), 'Qo‘yish (Ctrl+V)')}${btn('selmode', ico('<rect x="4" y="4" width="16" height="16" rx="3"/><path d="M8.5 12.5l2.5 2.5 4.5-5"/>'), 'Belgilash rejimi: butun blokni (matn, rasm, jadval) belgilash')}${btn('find', ico('<circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/>'), 'Qidirish va almashtirish')}${btn('page', ico('<path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4"/>'), 'Sahifa sozlamalari')}`;
+  ${btn('undo', ico('<path d="M9 7L4 12l5 5M4 12h10a6 6 0 010 12"/>'), 'Bekor qilish (Ctrl+Z)')}${btn('redo', ico('<path d="M15 7l5 5-5 5M20 12H10a6 6 0 000 12"/>'), 'Qaytarish (Ctrl+Y)')}${btn('copy', ico('<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 012-2h9"/>'), 'Nusxalash (Ctrl+C)')}${btn('cut', ico('<circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M20 4L8.1 15.9M14.5 14.5L20 20M8.1 8.1L12 12"/>'), 'Kesish (Ctrl+X)')}${btn('paste', ico('<path d="M9 4h6v3H9z"/><path d="M15 5h2a2 2 0 012 2v12a2 2 0 01-2 2H7a2 2 0 01-2-2V7a2 2 0 012-2h2"/>'), 'Qo‘yish (Ctrl+V)')}${btn('dsel', ico('<path d="M5 4h6M8 4v14M5 18h6"/><path d="M15 9l5 5-5 5" />'), 'Sudrab belgilash: barmoq bilan bir necha qatorni belgilash (qayta bosilsa o‘chadi)')}${btn('selmode', ico('<rect x="4" y="4" width="16" height="16" rx="3"/><path d="M8.5 12.5l2.5 2.5 4.5-5"/>'), 'Belgilash rejimi: butun blokni (matn, rasm, jadval) belgilash')}${btn('find', ico('<circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/>'), 'Qidirish va almashtirish')}${btn('page', ico('<path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4"/>'), 'Sahifa sozlamalari')}`;
   const $ = <T extends HTMLElement>(id: string) => tools.querySelector<T>('#' + id)!;
 
   // ---- model yordamchilari ----
@@ -306,7 +306,7 @@ export function mountEditor(root: HTMLElement, h: EditorHost): EditorHandle {
     else if (c.startsWith('al-')) { const a = c.slice(3) as Align; const ib = selImg ? find(selImg) : undefined; if (ib?.type === 'image') mutate(() => { ib.align = a; }); else setBlocks(b => { if (a === 'left') delete b.align; else b.align = a; }); }
     else if (c === 'bullet' || c === 'ordered') toggleList(c); else if (c === 'indent' || c === 'outdent') setBlocks(b => { if (b.type === 'li') b.indent = Math.max(0, Math.min(3, (b.indent ?? 0) + (c === 'indent' ? 1 : -1))); });
     else if (c === 'link') void makeLink(); else if (c === 'table') void insertTable(); else if (c === 'image') fileIn.click();
-    else if (c === 'copy') doCopy(false); else if (c === 'cut') doCopy(true); else if (c === 'paste') pasteClip(); else if (c === 'selmode') setSelMode(!selMode);
+    else if (c === 'copy') doCopy(false); else if (c === 'cut') doCopy(true); else if (c === 'paste') pasteClip(); else if (c === 'selmode') setSelMode(!selMode); else if (c === 'dsel') setDragSel(!dragSel);
     else if (c === 'undo') doUndo(); else if (c === 'redo') doRedo(); else if (c === 'find') findReplace(); else if (c === 'page') pageSettings();
   });
   $('tblock').addEventListener('change', e => { blockStyle((e.target as HTMLSelectElement).value); restoreSel(last); });
@@ -461,6 +461,22 @@ export function mountEditor(root: HTMLElement, h: EditorHost): EditorHandle {
     if (!target || !body.contains(target)) { let best: HTMLElement | null = null, bd = 1e9; for (const el of eds()) { const r = el.getBoundingClientRect(), d = e.clientY < r.top ? r.top - e.clientY : e.clientY > r.bottom ? e.clientY - r.bottom : 0; if (d < bd) { bd = d; best = el; } } if (!best) return; const r = best.getBoundingClientRect(), [tn, to] = locate(best, e.clientY < r.top ? 0 : 1e9); c = { n: tn, o: to }; }
     if (c) { e.preventDefault(); getSelection()!.setBaseAndExtent(dragA.n, dragA.o, c.n, c.o); }
   });
+  // ---- sensorli "sudrab belgilash": barmoq bilan qatorlar orasida belgilash (Android'ning o'z tutqichlari bir blokdan chiqa olmaydi) ----
+  let dragSel = false, tA: { n: Node; o: number } | null = null, tId = -1, tY = 0, tX = 0, scT = 0;
+  function setDragSel(on: boolean) { dragSel = on; body.classList.toggle('dsel', on); root.querySelector('[data-cmd=dsel]')?.classList.toggle('on', on); if (on) { h.toast('Belgilash: matn ustidan barmoqni sudrang. Sahifani aylantirish uchun ekran chetiga olib boring.'); } else { tA = null; clearInterval(scT); } }
+  const scrollEl = (() => { let e: HTMLElement | null = body; while (e && e !== document.body) { const cs = getComputedStyle(e); if (/(auto|scroll)/.test(cs.overflowY) && e.scrollHeight > e.clientHeight + 2) return e; e = e.parentElement; } return document.scrollingElement as HTMLElement; });
+  function touchExtend() {
+    if (!tA) return; let c = caretAt(tX, tY), target = c ? edOf(c.n) : null;
+    if (!target || !body.contains(target)) { let best: HTMLElement | null = null, bd = 1e9; for (const el of eds()) { const r = el.getBoundingClientRect(), d = tY < r.top ? r.top - tY : tY > r.bottom ? tY - r.bottom : 0; if (d < bd) { bd = d; best = el; } } if (!best) return; const r = best.getBoundingClientRect(), [tn, to] = locate(best, tY < r.top ? 0 : 1e9); c = { n: tn, o: to }; }
+    if (c) getSelection()!.setBaseAndExtent(tA.n, tA.o, c.n, c.o);
+  }
+  body.addEventListener('pointerdown', e => {
+    if (!dragSel || e.pointerType === 'mouse' || !e.isPrimary) return; const ed = edOf(e.target as Node), c = ed ? caretAt(e.clientX, e.clientY) : null; if (!ed || !c) return;
+    ed.focus({ preventScroll: true }); getSelection()!.setBaseAndExtent(c.n, c.o, c.n, c.o); tA = c; tId = e.pointerId; tX = e.clientX; tY = e.clientY; try { body.setPointerCapture(e.pointerId); } catch { /* */ }
+    clearInterval(scT); scT = window.setInterval(() => { if (!tA) return; const sc = scrollEl(), r = sc === document.scrollingElement ? { top: 0, bottom: innerHeight } : sc.getBoundingClientRect(), z = 70; let dy = 0; if (tY < r.top + z) dy = -Math.ceil((r.top + z - tY) / 5); else if (tY > r.bottom - z) dy = Math.ceil((tY - (r.bottom - z)) / 5); if (dy) { sc.scrollTop += dy; touchExtend(); } }, 30);
+  }, true);
+  body.addEventListener('pointermove', e => { if (!tA || e.pointerId !== tId) return; tX = e.clientX; tY = e.clientY; e.preventDefault(); touchExtend(); });
+  const tEnd = (e: PointerEvent) => { if (e.pointerId !== tId) return; tA = null; tId = -1; clearInterval(scT); updateState(); }; body.addEventListener('pointerup', tEnd); body.addEventListener('pointercancel', tEnd);
   // ko'p blokli belgilash ustida yozish/o'chirish
   body.addEventListener('beforeinput', e => {
     const ie = e as InputEvent, t = ie.inputType, ss = saveSel(); if (!ss || ss.ak === ss.bk) return;
