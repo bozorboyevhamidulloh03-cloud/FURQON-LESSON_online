@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="FUR (kichik)">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#0b3a9a"/><stop offset="1" stop-color="#030c25"/></linearGradient>
+    <linearGradient id="bd" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#7fe3ff"/><stop offset=".5" stop-color="#087bff"/><stop offset="1" stop-color="#35d5ff"/></linearGradient>
+    <linearGradient id="gd" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ffe98a"/><stop offset=".5" stop-color="#ffc928"/><stop offset="1" stop-color="#d9950f"/></linearGradient>
+    <linearGradient id="cap" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#5ab4ff"/><stop offset="1" stop-color="#0a4fd1"/></linearGradient>
+    <linearGradient id="pg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#7fcaff"/><stop offset="1" stop-color="#0b55d9"/></linearGradient>
+  </defs>
+  <path d="M96 18H340L444 122V462a32 32 0 0 1-32 32H96a32 32 0 0 1-32-32V50a32 32 0 0 1 32-32Z" fill="url(#bg)" stroke="url(#bd)" stroke-width="16"/>
+  <path d="M340 18V90a32 32 0 0 0 32 32H444Z" fill="url(#gd)"/>
+  <path d="M256 150L400 204L256 258L112 204Z" fill="url(#cap)" stroke="#9fdcff" stroke-width="6" stroke-linejoin="round"/>
+  <path d="M182 222V268Q256 304 330 268V222L256 252Z" fill="#0a45c0"/>
+  <path d="M256 204L372 218V290" fill="none" stroke="url(#gd)" stroke-width="14" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M356 286h32l6 44h-44Z" fill="url(#gd)"/>
+  <path d="M256 440C206 400 140 392 84 404V344C140 332 206 346 256 386Z" fill="url(#pg)" stroke="url(#gd)" stroke-width="14" stroke-linejoin="round"/>
+  <path d="M256 440C306 400 372 392 428 404V344C372 332 306 346 256 386Z" fill="url(#pg)" stroke="url(#gd)" stroke-width="14" stroke-linejoin="round"/>
+</svg>

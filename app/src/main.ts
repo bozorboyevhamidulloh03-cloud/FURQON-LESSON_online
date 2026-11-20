@@ -9,6 +9,7 @@ import { PresentHandle } from './present';
 import { fmtCode, customBroker, setCustomBroker, BROKERS } from './room';
 import { sniff, importPdf, importPdfText, importDocx, importImage } from './importers';
 import * as db from './db';
+import { initTheme, getSettings, setSettings, ACCENTS, effectiveMode, Settings } from './theme';
 import type { DocMeta, Folder } from './db';
 
 type Section = 'all' | 'recent' | 'fav' | 'trash';
@@ -25,7 +26,7 @@ const IC = {
   home: I('<path d="M3 11l9-8 9 8"/><path d="M5 10v10h5v-6h4v6h5V10"/>'), clock: I('<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>'), star: I('<path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z"/>'),
   trash: I('<path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/>'), plus: I('<path d="M12 5v14M5 12h14"/>'), folder: I('<path d="M3 6a2 2 0 012-2h4l2 3h8a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2z"/>'),
   upload: I('<path d="M12 16V4M7 9l5-5 5 5M4 20h16"/>'), more: I('<circle cx="5" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="19" cy="12" r="1.3"/>'), back: I('<path d="M15 5l-7 7 7 7"/>'),
-  moon: I('<path d="M20 14.5A8 8 0 019.5 4 8 8 0 1020 14.5z"/>'), search: I('<circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/>'), download: I('<path d="M12 4v12M7 11l5 5 5-5M4 20h16"/>'),
+  gear: I('<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M19.1 4.9L17 7M7 17l-2.1 2.1"/>'), moon: I('<path d="M20 14.5A8 8 0 019.5 4 8 8 0 1020 14.5z"/>'), search: I('<circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/>'), download: I('<path d="M12 4v12M7 11l5 5 5-5M4 20h16"/>'),
   board: I('<rect x="3" y="4" width="18" height="14" rx="2"/><path d="M7 14l3-4 3 3 2-2 3 3"/>'), doc: I('<path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4M9 12h6M9 16h6"/>'), up: I('<path d="M12 19V5M6 11l6-6 6 6"/>'), down: I('<path d="M12 5v14M6 13l6 6 6-6"/>'),
 };
 const fmtSize = (n: number) => n < 1024 ? n + ' B' : n < 1048576 ? Math.round(n / 1024) + ' KB' : (n / 1048576).toFixed(1) + ' MB';
@@ -191,7 +192,7 @@ function visibleDocs(): DocMeta[] {
 }
 function card(m: DocMeta): string {
   const trash = S.section === 'trash', items = trash ? [['restore', 'Tiklash'], ['purge', 'Butunlay o‘chirish']] : [['open', 'Ochish'], ['rename', 'Nomini o‘zgartirish'], ['dup', 'Nusxa olish'], ['move', 'Papkaga ko‘chirish'], ['export', 'Eksport (.fur)'], ['trash', 'O‘chirish']];
-  return `<article class="card" data-id="${m.id}" tabindex="0"><div class="thumb">${thumb(m)}</div><div class="cinfo"><h3 title="${esc(m.title)}">${esc(m.title)}</h3><p>${m.pages} sahifa · ${fmtSize(m.size)}</p><p class="mut">${trash ? 'O‘chirilgan: ' + ago(m.deletedAt!) : ago(m.modified)}</p></div>
+  return `<article class="card" data-id="${m.id}" tabindex="0"><div class="thumb">${thumb(m)}<img class="fbadge" src="fur-file.svg" alt=".fur" width="34" height="34"></div><div class="cinfo"><h3 title="${esc(m.title)}">${esc(m.title)}</h3><p>${m.pages} sahifa · ${fmtSize(m.size)}</p><p class="mut">${trash ? 'O‘chirilgan: ' + ago(m.deletedAt!) : ago(m.modified)}</p></div>
   ${trash ? '' : `<button class="ib star ${m.favorite ? 'on' : ''}" data-act="fav" aria-label="Sevimli">${IC.star}</button>`}<button class="ib more" data-act="menu" aria-label="Amallar">${IC.more}</button>
   ${S.menu === m.id ? `<div class="menu">${items.map(([a, t]) => `<button data-act="m:${a}" class="${a === 'trash' || a === 'purge' ? 'dng' : ''}">${t}</button>`).join('')}</div>` : ''}</article>`;
 }
@@ -209,13 +210,53 @@ function home(): string {
   return `<div class="shell"><aside class="side"><div class="brand"><img class="logoimg" src="icon-96.png" alt="" width="34" height="34"><b>FURQON</b><small>Online</small></div>
   <nav>${nav('all', IC.home, 'Darslar', live.length)}${nav('recent', IC.clock, 'So‘nggi')}${nav('fav', IC.star, 'Sevimlilar', favN)}${nav('trash', IC.trash, 'O‘chirilganlar', trashN)}</nav>
   <div class="grow"></div><div class="stor"><div class="bar"><i style="width:${pct}%"></i></div><small>${est ? `${fmtSize(est.usage)} ishlatilgan` : 'Xotira'}${est?.quota ? ` · ${fmtSize(est.quota)} dan` : ''}</small></div>
-  <button class="nav" data-act="theme">${IC.moon}<span>Mavzu</span></button></aside>
+  <button class="nav" data-act="theme">${IC.moon}<span>${effectiveMode() === 'dark' ? 'Yorug‘ rejim' : 'Qorong‘i rejim'}</span></button><button class="nav" data-act="settings">${IC.gear}<span>Sozlamalar</span></button></aside>
   <main><header class="top"><label class="search">${IC.search}<input id="q" placeholder="Darslarni qidirish" value="${esc(S.q)}"></label>
   <select id="sort" aria-label="Saralash"><option value="modified" ${S.sort === 'modified' ? 'selected' : ''}>Oxirgi o‘zgarish</option><option value="name" ${S.sort === 'name' ? 'selected' : ''}>Nomi bo‘yicha</option><option value="size" ${S.sort === 'size' ? 'selected' : ''}>Hajmi bo‘yicha</option></select>
   ${native() ? `<button class="btn" data-act="update" title="${esc(nativeVer())}">${IC.live}<span>Yangilanish</span></button>` : ''}<button class="btn" data-act="join">${IC.live}<span>Darsga qo‘shilish</span></button><button class="btn" data-act="import">${IC.upload}<span>Import</span></button><button class="btn" data-act="newfolder">${IC.folder}<span>Papka</span></button><button class="btn pri" data-act="new">${IC.plus}<span>Yangi dars</span></button></header>
-  <section class="content"><div class="crumb">${S.section === 'all' && !S.q ? `<button data-folder="">Darslar</button>${crumbs.map(c => `<span>/</span><button data-folder="${c.id}">${esc(c.name)}</button>`).join('')}` : `<b>${S.q ? 'Qidiruv natijalari' : titles[S.section]}</b>`}</div>
+  <section class="content">${S.section === 'all' && !S.q && !S.folderId ? dash(live.length, favN, est?.usage ?? 0) : ''}<div class="crumb">${S.section === 'all' && !S.q ? `<button data-folder="">Darslar</button>${crumbs.map(c => `<span>/</span><button data-folder="${c.id}">${esc(c.name)}</button>`).join('')}` : `<b>${S.q ? 'Qidiruv natijalari' : titles[S.section]}</b>`}</div>
   ${showFolders.length ? `<div class="folders">${showFolders.map(f => `<button class="fold" data-folder="${f.id}">${IC.folder}<span>${esc(f.name)}</span><em>${S.metas.filter(m => m.folderId === f.id && !m.deletedAt).length}</em></button>`).join('')}</div>` : ''}
   ${docs.length ? `<div class="grid">${docs.map(card).join('')}</div>` : showFolders.length ? '' : empty}</section></main></div>`;
+}
+function dash(n: number, fav: number, usage: number): string {
+  const pages = S.metas.filter(m => !m.deletedAt).reduce((a, m) => a + m.pages, 0);
+  return `<div class="hero"><div><h1>FURQON <span>Online</span></h1><p>Bilim — kelajak kaliti. Hujjat va doskadan iborat darsni bitta .fur faylda yarating, o‘tkazing va yozib oling.</p><button class="btn pri" data-act="new">${IC.plus}<span>Yangi dars yaratish</span></button></div><img class="fur3d" src="fur-file.svg" alt="" width="132" height="132"></div>
+  <div class="sec-h">Tezkor amallar</div><div class="qa"><button data-act="new"><i>${IC.doc}</i><b>Yangi dars</b><small>Hujjat + doska</small></button><button data-act="join"><i>${IC.live}</i><b>Darsga qo‘shilish</b><small>Kod bilan kirish</small></button><button data-act="import"><i>${IC.upload}</i><b>Import</b><small>.fur · PDF · DOCX · rasm</small></button><button data-act="newfolder"><i>${IC.folder}</i><b>Yangi papka</b><small>Darslarni tartiblash</small></button></div>
+  <div class="stats"><div class="stat"><small>Darslar</small><b>${n}</b></div><div class="stat"><small>Sahifalar</small><b>${pages}</b></div><div class="stat"><small>Sevimlilar</small><b>${fav}</b></div><div class="stat"><small>Xotira</small><b>${fmtSize(usage)}</b></div></div>
+  <div class="sec-h">${n ? 'Darslarim' : 'Boshlash'}</div>`;
+}
+function settingsDialog() {
+  let tab: 'look' | 'ui' | 'acc' = 'look';
+  void modal<null>('', (box, done) => {
+    const draw = () => {
+      const st: Settings = getSettings();
+      const seg = (k: string, opts: [string, string][], cur: string) => `<div class="seg" role="group">${opts.map(([v, t]) => `<button data-s="${k}:${v}" class="${cur === v ? 'on' : ''}" aria-pressed="${cur === v}">${t}</button>`).join('')}</div>`;
+      const look = `<h4>Ko‘rinish</h4><div class="set-row"><span class="l">Mavzu rejimi</span>${seg('mode', [['dark', 'Qorong‘i'], ['light', 'Yorug‘'], ['auto', 'Avtomatik']], st.mode)}</div>
+        <div class="set-row"><span class="l">Dizayn (aksent rangi)</span><div class="themes">${ACCENTS.map(a => `<button data-s="accent:${a.id}" data-v="${a.id}" class="${st.accent === a.id && !st.custom ? 'on' : ''}"><i></i>${a.name}</button>`).join('')}</div></div>
+        <div class="set-row"><label for="cacc">O‘z aksent rangingiz</label><div style="display:flex;gap:10px;align-items:center"><input type="color" id="cacc" value="${st.custom || ACCENTS.find(a => a.id === st.accent)!.c}"><button class="btn" data-s="custom:">Standartga qaytarish</button></div></div>
+        <div class="set-row"><label for="gl">Shisha shaffofligi: <b>${st.glass}%</b></label><input type="range" id="gl" min="20" max="100" step="2" value="${st.glass}"></div><div class="set-prev"><b>Namuna</b><p class="mut" style="margin:4px 0 0">Shaffoflik oshganda panellar ko‘proq “shishadek” bo‘ladi; 100% — deyarli zich.</p></div>`;
+      const ui = `<h4>Interfeys</h4><div class="set-row"><span class="l">Animatsiyalar</span>${seg('motion', [['auto', 'Tizim bo‘yicha'], ['on', 'Yoqilgan'], ['off', 'O‘chirilgan']], st.motion)}</div>
+        <div class="tog"><span>Ixcham interfeys<br><small class="mut">Tugma va bo‘shliqlar kichikroq</small></span><input type="checkbox" id="cmp" ${st.compact ? 'checked' : ''}></div>`;
+      const nm = (() => { try { return localStorage.getItem('fur.name') || ''; } catch { return ''; } })();
+      const acc = `<h4>Hisob</h4><div class="set-row"><label for="nm">Jonli darsdagi ismingiz</label><input class="txt" id="nm" value="${esc(nm)}" maxlength="40" placeholder="Ism"></div><div class="set-row"><label for="br">Jonli dars serveri (ixtiyoriy)</label><input class="txt" id="br" value="${esc(customBroker())}" placeholder="bo‘sh = bepul ommaviy server"></div><p class="mut small">Ma’lumotlar faqat shu qurilmada saqlanadi.</p>`;
+      box.classList.add('settings');
+      box.innerHTML = `<nav class="set-nav" aria-label="Sozlamalar bo‘limlari"><h3>SOZLAMALAR</h3><button data-t="look" class="${tab === 'look' ? 'on' : ''}">Ko‘rinish</button><button data-t="ui" class="${tab === 'ui' ? 'on' : ''}">Interfeys</button><button data-t="acc" class="${tab === 'acc' ? 'on' : ''}">Hisob va jonli dars</button><div class="grow"></div><button data-t="x">Yopish</button></nav><div class="set-body">${tab === 'look' ? look : tab === 'ui' ? ui : acc}</div>`;
+    };
+    draw();
+    box.addEventListener('click', e => {
+      const t = (e.target as HTMLElement).closest<HTMLElement>('[data-t],[data-s]'); if (!t) return;
+      if (t.dataset.t) { if (t.dataset.t === 'x') return done(null); tab = t.dataset.t as typeof tab; return draw(); }
+      const [k, v] = t.dataset.s!.split(':'); if (k === 'accent') setSettings({ accent: v as Settings['accent'], custom: '' }); else if (k === 'custom') setSettings({ custom: '' }); else setSettings({ [k]: v } as Partial<Settings>); draw();
+    });
+    box.addEventListener('input', e => {
+      const t = e.target as HTMLInputElement;
+      if (t.id === 'gl') { setSettings({ glass: Number(t.value) }); const l = box.querySelector('label[for=gl] b'); if (l) l.textContent = t.value + '%'; }
+      else if (t.id === 'cacc') setSettings({ custom: t.value });
+      else if (t.id === 'nm') { try { localStorage.setItem('fur.name', t.value.trim()); } catch { /* */ } }
+      else if (t.id === 'br') setCustomBroker(t.value.trim());
+    });
+    box.addEventListener('change', e => { const t = e.target as HTMLInputElement; if (t.id === 'cmp') setSettings({ compact: t.checked }); });
+  });
 }
 function docView(): string {
   const s = S.ses!;
@@ -301,11 +342,15 @@ function present(from: number) {
   const ses = S.ses; if (!ses) return; if (!ses.doc.pages.length) return toast('Sahifa yo‘q');
   let rec: Rec | null = null, tick = 0; const L = live;
   const view: PresentHandle = startPresentation(ses.doc, from, () => { clearInterval(tick); if (rec) void finishRec(rec, ses.doc.title); rec = null; render(); }, { ...(L ? { hooks: L.hooks } : {}), media: !!L?.media.supported, record: recSupported(), onBtn: b => {
-    if (b === 'rec') { void (async () => {
-      if (rec) { const r = rec; rec = null; clearInterval(tick); view.btn('rec', { on: false, title: 'Darsni yozib olish' }); await finishRec(r, ses.doc.title); return; }
+    if (b === 'recp') {
+      if (!rec) return; const r = rec;
+      if (r.paused()) { r.resume(); toast('Yozish davom etmoqda'); } else { r.pause(); toast('Yozish pauzada — davom ettirish uchun ▶ ni bosing'); }
+      view.recInfo(fmtDur(r.elapsed()), r.paused()); view.status(`${r.paused() ? '⏸ PAUZA' : '● REC'} ${fmtDur(r.elapsed())}`);
+    } else if (b === 'rec') { void (async () => {
+      if (rec) { const r = rec; rec = null; clearInterval(tick); view.btn('rec', { on: false, title: 'Darsni yozib olish' }); view.btn('recp', { hide: true }); view.recInfo(null); await finishRec(r, ses.doc.title); return; }
       try { rec = await startRecorder(view, L?.media.micTrack()); } catch (e) { return void toast((e as Error).message, true); }
-      toast(rec.audio ? 'Yozish boshlandi (faqat shu sahifa + ovozingiz)' : 'Yozish boshlandi — mikrofon yo‘q, ovozsiz', !rec.audio); view.btn('rec', { on: true, title: 'To‘xtatish va saqlash' });
-      tick = window.setInterval(() => { if (rec) view.status(`● REC ${fmtDur(rec.elapsed())}`); }, 1000);
+      toast(rec.audio ? 'Yozish boshlandi (faqat shu sahifa + ovozingiz)' : 'Yozish boshlandi — mikrofon yo‘q, ovozsiz', !rec.audio); view.btn('rec', { on: true, title: 'To‘xtatish va saqlash' }); view.btn('recp', { hide: false }); view.recInfo('0:00');
+      tick = window.setInterval(() => { if (rec) { view.recInfo(fmtDur(rec.elapsed()), rec.paused()); view.status(`${rec.paused() ? '⏸ PAUZA' : '● REC'} ${fmtDur(rec.elapsed())}`); } }, 500);
     })(); } else if (L) L.onBtn(b, view);
   } });
 }
@@ -345,7 +390,8 @@ root.addEventListener('click', async e => {
     if (a === 'pages') { S.view = 'doc'; return render(); }
     if (a.startsWith('pview:')) { S.pview = a.slice(6) === 'list' ? 'list' : 'grid'; try { localStorage.setItem('fur.pview', S.pview); } catch { /* */ } return render(); }
     if (a === 'prevpage' || a === 'nextpage') { let j = S.pageIdx + (a === 'nextpage' ? 1 : -1); if (S.ses!.doc.pages[j]) return openPage(j); return; }
-    if (a === 'theme') return toggleTheme();
+    if (a === 'theme') { toggleTheme(); return render(); }
+    if (a === 'settings') return settingsDialog();
   }
   if (card && S.section !== 'trash') return void openDoc(card.dataset.id!);
   if (S.menu) { S.menu = null; render(); }
@@ -361,8 +407,8 @@ window.addEventListener('dragover', e => e.preventDefault());
 window.addEventListener('drop', e => { e.preventDefault(); if (e.dataTransfer?.files.length) void importFiles(e.dataTransfer.files); });
 window.addEventListener('visibilitychange', () => { if (document.hidden && S.ses && S.ses.status !== 'saved') void persist(); });
 
-function toggleTheme() { const d = document.documentElement, n = d.dataset.theme === 'dark' ? 'light' : 'dark'; d.dataset.theme = n; try { localStorage.setItem('fur-theme', n); } catch { /* ignore */ } }
-(() => { let t: string | null = null; try { t = localStorage.getItem('fur-theme'); } catch { /* ignore */ } document.documentElement.dataset.theme = t ?? (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'); })();
+function toggleTheme() { setSettings({ mode: effectiveMode() === 'dark' ? 'light' : 'dark' }); }
+initTheme();
 if ('serviceWorker' in navigator && location.protocol.startsWith('http') && !native()) navigator.serviceWorker.register('sw.js').catch(() => {});
 (async () => { try { await refresh(); } catch { S.err = 'Brauzer xotirasi (IndexedDB) mavjud emas'; } render(); if (S.err) toast(S.err, true); })();
 (window as any).__fur = { S, openDoc, refresh, render };

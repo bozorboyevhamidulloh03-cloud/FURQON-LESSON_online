@@ -1,0 +1,62 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="FUR — FURQON format (.fur)">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#0b3a9a"/><stop offset=".45" stop-color="#06205f"/><stop offset="1" stop-color="#030c25"/></linearGradient>
+    <linearGradient id="bd" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#7fe3ff"/><stop offset=".5" stop-color="#087bff"/><stop offset="1" stop-color="#35d5ff"/></linearGradient>
+    <linearGradient id="gd" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ffe98a"/><stop offset=".5" stop-color="#ffc928"/><stop offset="1" stop-color="#d9950f"/></linearGradient>
+    <linearGradient id="cap" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#4aa8ff"/><stop offset="1" stop-color="#0a4fd1"/></linearGradient>
+    <linearGradient id="capside" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#0a5ae0"/><stop offset="1" stop-color="#062a8a"/></linearGradient>
+    <linearGradient id="pg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#6fc3ff"/><stop offset="1" stop-color="#0b55d9"/></linearGradient>
+    <linearGradient id="tx" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#9cc4ff"/></linearGradient>
+    <linearGradient id="sheen" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".16"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient>
+    <clipPath id="doc"><path id="docp" d="M110 28H356L436 108V450a34 34 0 0 1-34 34H110a34 34 0 0 1-34-34V62a34 34 0 0 1 34-34Z"/></clipPath>
+    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="7" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+    <filter id="soft" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="3"/></filter>
+  </defs>
+  <!-- ko'k nur -->
+  <path d="M110 28H356L436 108V450a34 34 0 0 1-34 34H110a34 34 0 0 1-34-34V62a34 34 0 0 1 34-34Z" fill="none" stroke="#087bff" stroke-width="10" opacity=".55" filter="url(#glow)"/>
+  <!-- hujjat -->
+  <path d="M110 28H356L436 108V450a34 34 0 0 1-34 34H110a34 34 0 0 1-34-34V62a34 34 0 0 1 34-34Z" fill="url(#bg)"/>
+  <g clip-path="url(#doc)">
+    <path d="M60 220L300 20H360L60 300Z" fill="url(#sheen)"/>
+    <path d="M200 500L460 250V330L290 500Z" fill="#fff" opacity=".05"/>
+  </g>
+  <path d="M110 28H356L436 108V450a34 34 0 0 1-34 34H110a34 34 0 0 1-34-34V62a34 34 0 0 1 34-34Z" fill="none" stroke="url(#bd)" stroke-width="5"/>
+  <path d="M356 28V76a32 32 0 0 0 32 32H436Z" fill="url(#gd)"/>
+  <!-- orbita (orqa yarmi) -->
+  <path d="M64 262C90 200 380 170 452 232" fill="none" stroke="url(#gd)" stroke-width="5" stroke-linecap="round" opacity=".55" transform="rotate(-9 256 250)"/>
+  <!-- ochiq kitob -->
+  <g transform="translate(0 6)">
+    <path d="M256 262C228 242 184 236 138 244V204C184 196 228 204 256 224Z" fill="url(#pg)"/>
+    <path d="M256 262C284 242 328 236 374 244V204C328 196 284 204 256 224Z" fill="url(#pg)"/>
+    <path d="M256 262C228 242 184 236 138 244" fill="none" stroke="url(#gd)" stroke-width="7" stroke-linecap="round"/>
+    <path d="M256 262C284 242 328 236 374 244" fill="none" stroke="url(#gd)" stroke-width="7" stroke-linecap="round"/>
+    <path d="M256 226V262" stroke="#fff3b0" stroke-width="4" stroke-linecap="round" filter="url(#glow)"/>
+    <path d="M256 262C230 252 192 250 146 258" fill="none" stroke="url(#gd)" stroke-width="4" stroke-linecap="round" opacity=".6"/>
+    <path d="M256 262C282 252 320 250 366 258" fill="none" stroke="url(#gd)" stroke-width="4" stroke-linecap="round" opacity=".6"/>
+  </g>
+  <!-- bitiruvchi qalpoq -->
+  <path d="M196 136V172Q256 200 316 172V136L256 162Z" fill="url(#capside)"/>
+  <path d="M256 92L360 130L256 168L152 130Z" fill="url(#cap)"/>
+  <path d="M256 92L360 130L256 168L152 130Z" fill="none" stroke="#9fdcff" stroke-width="2.5" stroke-linejoin="round" opacity=".7"/>
+  <path d="M256 130L338 140V186" fill="none" stroke="url(#gd)" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M331 184h14l4 24h-22Z" fill="url(#gd)"/>
+  <!-- orbita (old yarmi) -->
+  <path d="M66 270C120 318 400 300 452 232" fill="none" stroke="url(#gd)" stroke-width="6" stroke-linecap="round" transform="rotate(-9 256 250)" filter="url(#glow)"/>
+  <!-- FUR -->
+  <g fill="none" stroke="url(#tx)" stroke-width="18" stroke-linecap="round" stroke-linejoin="round" filter="url(#glow)">
+    <path d="M196 312H136V382M136 346H184"/>
+    <path d="M222 312V350A36 36 0 0 0 294 350V312"/>
+    <path d="M324 382V312H366A27 27 0 0 1 366 366H324M364 366L396 382"/>
+  </g>
+  <!-- ajratgich -->
+  <path d="M120 404H236M276 404H392" stroke="url(#gd)" stroke-width="2.5" stroke-linecap="round" opacity=".9"/>
+  <path d="M256 394l4.5 8.5 8.5 4.5-8.5 4.5-4.5 8.5-4.5-8.5-8.5-4.5 8.5-4.5Z" fill="url(#gd)"/>
+  <!-- .fur yorlig'i -->
+  <path d="M168 484L196 428Q199 422 206 422H306Q313 422 316 428L344 484Z" fill="url(#gd)"/>
+  <g fill="none" stroke="#071a45" stroke-width="7" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M214 462h.1"/>
+    <path d="M232 470V448a10 10 0 0 1 14-7M224 453H242"/>
+    <path d="M256 446V458a8 8 0 0 0 16 0V446M272 446V470"/>
+    <path d="M290 446V470M290 456a10 10 0 0 1 12-10"/>
+  </g>
+</svg>

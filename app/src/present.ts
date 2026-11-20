@@ -4,10 +4,10 @@ import { drawObject, objBounds } from './boardrender';
 import { rasterize } from './snapshot';
 
 export interface PresentHooks { page(i: number): void; laser(u: number, v: number, on: boolean): void; ink(pts: [number, number][] | null): void; focus?(u: number, v: number): void }
-export type PresBtn = 'mic' | 'cam' | 'rec';
+export type PresBtn = 'mic' | 'cam' | 'rec' | 'recp';
 export type WriteObj = StrokeObj;
 export interface PresentOpts { controlled?: boolean; onHand?: () => void; hooks?: PresentHooks; onBtn?: (b: PresBtn) => void; media?: boolean; record?: boolean; onWrite?: (o: StrokeObj) => void; onWriteUndo?: () => void }
-export interface PresentHandle { setWrite(ok: boolean): void; stopFrames(): void; btn(id: PresBtn, st: { on?: boolean; dis?: boolean; hide?: boolean; title?: string }): void; frame(g: CanvasRenderingContext2D, W: number, H: number): void; viewSize(): [number, number]; destroy(): void; goto(i: number): void; refresh(): void; laser(u: number, v: number, on: boolean): void; ink(pts: [number, number][] | null): void; focus(u: number, v: number): void; status(t: string, bad?: boolean): void; hand(on: boolean): void }
+export interface PresentHandle { setWrite(ok: boolean): void; stopFrames(): void; btn(id: PresBtn, st: { on?: boolean; dis?: boolean; hide?: boolean; title?: string }): void; frame(g: CanvasRenderingContext2D, W: number, H: number): void; viewSize(): [number, number]; destroy(): void; goto(i: number): void; refresh(): void; laser(u: number, v: number, on: boolean): void; ink(pts: [number, number][] | null): void; focus(u: number, v: number): void; status(t: string, bad?: boolean): void; hand(on: boolean): void; recInfo(t: string | null, paused?: boolean): void }
 type Mode = 'nav' | 'laser' | 'pen';
 const ico = (d: string) => `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
 
@@ -56,7 +56,7 @@ export function renderDoc(doc: FurDocument, page: FurPage, urls: string[], pageN
 export function startPresentation(doc: FurDocument, startIndex: number, onExit: () => void, opts: PresentOpts = {}): PresentHandle {
   const ctl = !!opts.controlled, hk = opts.hooks;
   const root = document.createElement('div'); root.className = 'pres'; root.tabIndex = -1; root.setAttribute('role', 'dialog'); root.setAttribute('aria-label', 'Taqdimot');
-  root.innerHTML = `<div class="pres-stage" id="ps"></div><canvas class="pres-ink" id="pi"></canvas><div class="pres-laser" id="pl" hidden></div><div class="pres-black" id="pb" hidden></div>
+  root.innerHTML = `<div class="pres-stage" id="ps"></div><canvas class="pres-ink" id="pi"></canvas><div class="pres-laser" id="pl" hidden></div><div class="pres-black" id="pb" hidden></div><div class="pres-rec" id="prb" role="status" aria-live="polite" hidden></div>
   <div class="pres-bar" id="pbar" role="toolbar" aria-label="Taqdimot boshqaruvi">
     ${ctl ? '' : `<button data-p="prev" title="Oldingi (←)" aria-label="Oldingi">${ico('<path d="M15 5l-7 7 7 7"/>')}</button>`}<span class="pres-no" id="pn"></span>${ctl ? '<span class="pres-st" id="pst"></span>' : `<button data-p="next" title="Keyingi (→, bo‘sh joy)" aria-label="Keyingi">${ico('<path d="M9 5l7 7-7 7"/>')}</button>`}<i></i>
     ${ctl ? `<button data-p="hand" title="Qo‘l ko‘tarish — savol" aria-label="Qo‘l ko‘tarish">${ico('<path d="M8 12V6a1.5 1.5 0 013 0v5M11 11V4.5a1.5 1.5 0 013 0V11M14 11V6a1.5 1.5 0 013 0v8c0 4-2 6-5 6-3 0-4-1.5-6-4.5l-1.5-2.5a1.5 1.5 0 012.5-1.5L8 14"/>')}</button>` : ''}
@@ -65,7 +65,7 @@ export function startPresentation(doc: FurDocument, startIndex: number, onExit: 
     <button data-p="pen" ${ctl ? 'hidden' : ''} title="Qalam — vaqtincha chizish (P)" aria-label="Qalam">${ico('<path d="M4 20l1-4L16 5l3 3L8 19z"/>')}</button>
     <button data-p="clear" ${ctl ? 'hidden' : ''} title="Chizilganni tozalash (C)" aria-label="Tozalash">${ico('<path d="M5 7h14M10 7V4h4v3M7 7l1 13h8l1-13"/>')}</button>
     <button data-p="black" ${ctl ? 'hidden' : ''} title="Qora ekran (B)" aria-label="Qora ekran">${ico('<rect x="4" y="5" width="16" height="12" rx="1"/><path d="M9 21h6"/>')}</button>
-    ${opts.media ? `<button data-p="mic" title="Mikrofon" aria-label="Mikrofon">${ico('<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0014 0M12 18v3"/>')}</button><button data-p="cam" title="Kamera" aria-label="Kamera">${ico('<rect x="3" y="6" width="13" height="12" rx="2"/><path d="M16 10l5-3v10l-5-3"/>')}</button>` : ''}${opts.record ? `<button data-p="rec" title="Darsni yozib olish (faqat shu sahifa + ovoz)" aria-label="Yozib olish">${ico('<circle cx="12" cy="12" r="6"/>')}</button>` : ''}
+    ${opts.media ? `<button data-p="mic" title="Mikrofon" aria-label="Mikrofon">${ico('<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0014 0M12 18v3"/>')}</button><button data-p="cam" title="Kamera" aria-label="Kamera">${ico('<rect x="3" y="6" width="13" height="12" rx="2"/><path d="M16 10l5-3v10l-5-3"/>')}</button>` : ''}${opts.record ? `<button data-p="rec" title="Darsni yozib olish (faqat shu sahifa + ovoz)" aria-label="Yozib olish">${ico('<circle cx="12" cy="12" r="6"/>')}</button><button data-p="recp" hidden title="Yozuvni pauza qilish" aria-label="Yozuvni pauza qilish">${ico('<path d="M9 5v14M15 5v14"/>')}</button>` : ''}
     <button data-p="zout" title="Kichraytirish (−)" aria-label="Kichraytirish">${ico('<circle cx="11" cy="11" r="6"/><path d="M8 11h6M20 20l-4.5-4.5"/>')}</button><button data-p="zin" title="Yaqinlashtirish (+)" aria-label="Yaqinlashtirish">${ico('<circle cx="11" cy="11" r="6"/><path d="M8 11h6M11 8v6M20 20l-4.5-4.5"/>')}</button><button data-p="full" title="To‘liq ekran (F)" aria-label="To‘liq ekran">${ico('<path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/>')}</button><i></i>
     <button data-p="exit" title="Chiqish (Esc)" aria-label="Chiqish">${ico('<path d="M6 6l12 12M18 6L6 18"/>')}</button></div>`;
   document.body.appendChild(root);
@@ -170,7 +170,7 @@ export function startPresentation(doc: FurDocument, startIndex: number, onExit: 
   bar.addEventListener('click', e => {
     const t = (e.target as HTMLElement).closest<HTMLElement>('[data-p]'); if (!t) return; const a = t.dataset.p;
     if (a === 'prev') go(i - 1); else if (a === 'next') go(i + 1); else if (a === 'laser') setMode('laser'); else if (a === 'pen') setMode('pen'); else if (a === 'clear') { clearInk(); hk?.ink(null); } else if (a === 'zin') setZoom(z * 1.4, root.clientWidth / 2, root.clientHeight / 2); else if (a === 'zout') setZoom(z / 1.4, root.clientWidth / 2, root.clientHeight / 2); else if (a === 'zreset') { resetView(); show(); } else if (a === 'hand') opts.onHand?.();
-    else if (a === 'black') toggleBlack(); else if (a === 'full') fullscreen(); else if (a === 'exit') exit(); else if (a === 'mic' || a === 'cam' || a === 'rec') opts.onBtn?.(a);
+    else if (a === 'black') toggleBlack(); else if (a === 'full') fullscreen(); else if (a === 'exit') exit(); else if (a === 'mic' || a === 'cam' || a === 'rec' || a === 'recp') opts.onBtn?.(a);
     else if (a === 'write') { writeOn = !writeOn; fitLock = null; if (writeOn) { const p = doc.pages[i]; if (p.type === 'board') { fitLock = null; } } show(true); syncWriteUi(); }
     else if (a === 'wcol') { wci = (wci + 1) % WCOL.length; paintWcol(); } else if (a === 'wundo') opts.onWriteUndo?.();
   });
@@ -244,5 +244,10 @@ export function startPresentation(doc: FurDocument, startIndex: number, onExit: 
     setWrite(ok: boolean) { wAllowed = ok; if (!ok) { writeOn = false; fitLock = null; } syncWriteUi(); show(true); },
     stopFrames() { recOn = false; },
     hand(on: boolean) { root.querySelector('[data-p=hand]')?.classList.toggle('on', on); },
+    recInfo(t: string | null, paused = false) {
+      const e = root.querySelector<HTMLElement>('#prb'), b = root.querySelector<HTMLButtonElement>('[data-p=recp]');
+      if (e) { e.hidden = t === null; e.classList.toggle('paused', paused); e.innerHTML = t === null ? '' : `<i></i><span>${paused ? 'PAUZA' : 'REC'}</span><b>${t}</b>`; }
+      if (b) { const ttl = paused ? 'Yozuvni davom ettirish' : 'Yozuvni pauza qilish'; b.title = ttl; b.setAttribute('aria-label', ttl); b.classList.toggle('on', paused); b.innerHTML = paused ? ico('<path d=\"M8 5l11 7-11 7z\"/>') : ico('<path d=\"M9 5v14M15 5v14\"/>'); }
+    },
   };
 }
