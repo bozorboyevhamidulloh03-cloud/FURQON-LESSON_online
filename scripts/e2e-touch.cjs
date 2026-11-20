@@ -1,6 +1,6 @@
 // Haqiqiy TOUCH hodisalari (CDP): qalam, chimchilash-zoom, surish; oqimsiz WebView simulyatsiyasi (deflate-raw yo'q)
 const {chromium}=require('/opt/npm-tools/node_modules/playwright');
-const SHOT=process.argv[2]||'/home/claude/fur-platform/docs/shots8';require('fs').mkdirSync(SHOT,{recursive:true});
+const SHOT=process.argv[2]||'/home/claude/fur-holo/docs/shots8';require('fs').mkdirSync(SHOT,{recursive:true});
 let pass=0,fail=0;const ok=(n,c,x='')=>{c?pass++:fail++;console.log((c?'PASS ':'FAIL ')+n+(x?'  '+x:''));};
 (async()=>{
 const b=await chromium.launch();const ctx=await b.newContext({viewport:{width:412,height:800},hasTouch:true,isMobile:true,deviceScaleFactor:2});ctx.setDefaultTimeout(15000);

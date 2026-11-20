@@ -1,5 +1,5 @@
 const {chromium}=require('/opt/npm-tools/node_modules/playwright');
-const SHOT=process.argv[2]||'/home/claude/fur-platform/docs/shots5';require('fs').mkdirSync(SHOT,{recursive:true});
+const SHOT=process.argv[2]||'/home/claude/fur-holo/docs/shots5';require('fs').mkdirSync(SHOT,{recursive:true});
 let pass=0,fail=0;const ok=(n,c,x='')=>{c?pass++:fail++;console.log((c?'PASS ':'FAIL ')+n+(x?'  '+x:''));};
 (async()=>{
 const b=await chromium.launch();const ctx=await b.newContext({viewport:{width:1280,height:800}});await ctx.addInitScript(()=>{try{localStorage.setItem('fur.pview','list')}catch{}});ctx.setDefaultTimeout(15000);

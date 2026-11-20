@@ -1,5 +1,5 @@
 const {chromium}=require('/opt/npm-tools/node_modules/playwright');const {spawn}=require('child_process');const fs=require('fs');
-const SHOT=process.argv[2]||'/home/claude/fur-platform/docs/shots6';fs.mkdirSync(SHOT,{recursive:true});
+const SHOT=process.argv[2]||'/home/claude/fur-holo/docs/shots6';fs.mkdirSync(SHOT,{recursive:true});
 let pass=0,fail=0;const ok=(n,c,x='')=>{c?pass++:fail++;console.log((c?'PASS ':'FAIL ')+n+(x?'  '+x:''));};
 const LOG='/tmp/relay.log';try{fs.unlinkSync(LOG)}catch{}
 const relay=spawn('node',['/home/claude/fur-platform/relay/server.js'],{env:{PORT:'18883',...process.env,NODE_PATH:'/opt/npm-tools/node_modules',FUR_RELAY_LOG:LOG},stdio:'inherit'});
@@ -21,12 +21,12 @@ await S1.fill('#jc',code);await S1.fill('#js',SRV);await S1.click('.dlg [data-v=
 await S1.waitForFunction(()=>document.getElementById('pst')&&document.getElementById('pst').textContent.includes('Jonli'),null,{timeout:10000});ok('o‘quvchi ulandi (● Jonli)',true);
 ok('o‘quvchi 1/9 sahifani ko‘rdi',(await S1.locator('#pn').innerText())==='1 / 9');
 await T.waitForFunction(()=>document.getElementById('livepill')&&document.getElementById('livepill').textContent.includes('· 1'),null,{timeout:8000});ok('o‘qituvchi ro‘yxatida 1 ta o‘quvchi',true);
-await T.locator('#rost li').first().waitFor();ok('ro‘yxatda ism: Ali',(await T.locator('#rost').innerText()).includes('Ali'));
+await T.locator('#rost .rl').first().waitFor();ok('ro‘yxatda ism: Ali',(await T.locator('#rost').innerText()).includes('Ali'));
 await T.screenshot({path:SHOT+'/1-oqituvchi-kod.png'});
 const nonWhite=async p=>p.evaluate(()=>{const c=document.querySelector('.pres-stage canvas');if(!c)return 0;const d=c.getContext('2d').getImageData(0,0,c.width,c.height).data;let n=0;for(let i=0;i<d.length;i+=16)if(d[i]<235||d[i+1]<235||d[i+2]<235)n++;return n});
 await S1.waitForFunction(()=>{const c=document.querySelector('.pres-stage canvas');if(!c)return false;const d=c.getContext('2d').getImageData(0,0,c.width,c.height).data;let n=0;for(let i=0;i<d.length;i+=16)if(d[i]<200)n++;return n>800},null,{timeout:10000});ok('o‘quvchi PDF sahifasi rasmini oldi (asset uzatildi)',true);
 // --- sahifa almashtirish ---
-await T.click('.dlg [data-v=close]');await T.locator('.pg.openable').nth(3).click();await T.waitForSelector('#bc');
+await T.click('.ldlg [data-v=done]');await T.locator('.pg.openable').nth(3).click();await T.waitForSelector('#bc');
 await S1.waitForFunction(()=>document.getElementById('pn').textContent==='4 / 9',null,{timeout:8000});ok('o‘qituvchi 4-sahifani ochdi → o‘quvchida 4/9',true);
 await S1.waitForTimeout(800);
 // --- chizish (ops) ---

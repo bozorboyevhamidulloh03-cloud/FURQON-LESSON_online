@@ -5,6 +5,7 @@ import { mountBoard, BoardHandle } from './board';
 import { startPresentation } from './present';
 import { startTeacher, joinClass, TeacherSession } from './classroom';
 import { startRecorder, recSupported, Rec } from './recorder';
+import { makeFrames, FrameCtl } from './recframe';
 import { PresentHandle } from './present';
 import { fmtCode, customBroker, setCustomBroker, BROKERS } from './room';
 import { sniff, importPdf, importPdfText, importDocx, importImage } from './importers';
@@ -21,6 +22,7 @@ const root = document.getElementById('app')!;
 const esc = (s: string) => s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!));
 const I = (d: string) => `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
 const IC = {
+  refresh: I('<path d="M20 11a8 8 0 10-2.3 5.7"/><path d="M20 4v7h-7"/>'),
   live: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="2.5"/><path d="M7.5 7.5a6.4 6.4 0 000 9M16.5 7.5a6.4 6.4 0 010 9M4.5 4.5a10.6 10.6 0 000 15M19.5 4.5a10.6 10.6 0 010 15"/></svg>',
   play: '<svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true"><path d="M7 4l13 8-13 8z"/></svg>',
   home: I('<path d="M3 11l9-8 9 8"/><path d="M5 10v10h5v-6h4v6h5V10"/>'), clock: I('<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>'), star: I('<path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z"/>'),
@@ -49,8 +51,8 @@ window.addEventListener('error', e => { try { toast('Xato: ' + (e.message || 'no
 window.addEventListener('unhandledrejection', e => { try { const r = e.reason as { message?: string } | undefined; toast('Xato: ' + (r?.message || String(e.reason)), true); } catch { /* */ } });
 function modal<T>(html: string, onMount: (box: HTMLElement, done: (v: T | null) => void) => void): Promise<T | null> {
   return new Promise(res => {
-    const ov = document.createElement('div'); ov.className = 'ov'; ov.innerHTML = `<div class="dlg" role="dialog" aria-modal="true">${html}</div>`; document.body.append(ov);
-    const done = (v: T | null) => { ov.remove(); document.removeEventListener('keydown', key); res(v); };
+    const ov = document.createElement('div'); ov.className = 'ov'; ov.innerHTML = `<div class="dlg" role="dialog" aria-modal="true">${html}</div>`; document.body.append(ov); document.body.classList.add('modal-open');
+    const done = (v: T | null) => { ov.remove(); if (!document.querySelector('.ov')) document.body.classList.remove('modal-open'); document.removeEventListener('keydown', key); res(v); };
     const key = (e: KeyboardEvent) => { if (e.key === 'Escape') done(null); };
     document.addEventListener('keydown', key); ov.addEventListener('mousedown', e => { if (e.target === ov) done(null); });
     onMount(ov.querySelector('.dlg') as HTMLElement, done);
@@ -159,7 +161,7 @@ function updateStatus() {
   const t = { saved: `Saqlandi · ${hhmm(s.savedAt)}`, dirty: 'O‘zgarishlar bor…', saving: 'Saqlanmoqda…', error: 'Saqlanmadi' }[s.status];
   el.className = 'chip ' + s.status; el.textContent = t;
 }
-async function closeDoc() { if (live) endLive(); if (S.editor) { S.editor.destroy(); S.editor = null; } const s = S.ses; if (s && s.status !== 'saved') { clearTimeout(s.saveT); clearTimeout(s.recT); await persist(); } S.ses = null; S.view = 'home'; await refresh(); render(); }
+async function closeDoc() { if (live) endLive(); if (RM.rec) void recStop(); if (S.editor) { S.editor.destroy(); S.editor = null; } const s = S.ses; if (s && s.status !== 'saved') { clearTimeout(s.saveT); clearTimeout(s.recT); await persist(); } S.ses = null; S.view = 'home'; await refresh(); render(); }
 async function sesAction(act: string, arg?: string) {
   const s = S.ses!;
   if (act === 'addboard' || act === 'adddoc') { const t: PageType = act === 'addboard' ? 'board' : 'document'; s.doc.pages.push(newPage(t, '')); }
@@ -206,22 +208,25 @@ function home(): string {
   const empty = S.q ? `<div class="empty"><h2>Hech narsa topilmadi</h2><p>"${esc(S.q)}" bo‘yicha darslar yo‘q.</p></div>`
     : S.section === 'trash' ? `<div class="empty"><h2>Savat bo‘sh</h2><p>O‘chirilgan darslar shu yerda turadi va tiklanishi mumkin.</p></div>`
     : S.section === 'fav' ? `<div class="empty"><h2>Sevimlilar yo‘q</h2><p>Dars kartochkasidagi yulduzchani bosing.</p></div>`
-    : `<div class="empty"><svg viewBox="0 0 120 90" width="120" aria-hidden="true"><rect x="22" y="14" width="64" height="66" rx="8" fill="var(--card)" stroke="var(--line)"/><rect x="34" y="6" width="64" height="66" rx="8" fill="var(--card)" stroke="var(--line)"/><path d="M46 30h40M46 42h40M46 54h24" stroke="var(--accent)" stroke-width="3" stroke-linecap="round"/></svg><h2>Birinchi darsingizni yarating</h2><p>Hujjat va doskadan iborat dars bitta .fur faylda saqlanadi. Hammasi shu qurilmada, akkauntsiz.</p><button class="btn pri" data-act="new">${IC.plus} Yangi dars</button></div>`;
+    : `<div class="empty"><svg viewBox="0 0 120 90" width="120" aria-hidden="true"><rect x="22" y="14" width="64" height="66" rx="8" fill="var(--card)" stroke="var(--line)"/><rect x="34" y="6" width="64" height="66" rx="8" fill="var(--card)" stroke="var(--line)"/><path d="M46 30h40M46 42h40M46 54h24" stroke="var(--accent)" stroke-width="3" stroke-linecap="round"/></svg><h2>Birinchi darsingizni yarating</h2><p>Hujjat va doskadan iborat dars bitta .fur faylda saqlanadi. Hammasi shu qurilmada, akkauntsiz.</p></div>`;
   return `<div class="shell"><aside class="side"><div class="brand"><img class="logoimg" src="icon-96.png" alt="" width="34" height="34"><b>FURQON</b><small>Online</small></div>
   <nav>${nav('all', IC.home, 'Darslar', live.length)}${nav('recent', IC.clock, 'So‘nggi')}${nav('fav', IC.star, 'Sevimlilar', favN)}${nav('trash', IC.trash, 'O‘chirilganlar', trashN)}</nav>
   <div class="grow"></div><div class="stor"><div class="bar"><i style="width:${pct}%"></i></div><small>${est ? `${fmtSize(est.usage)} ishlatilgan` : 'Xotira'}${est?.quota ? ` · ${fmtSize(est.quota)} dan` : ''}</small></div>
-  <button class="nav" data-act="theme">${IC.moon}<span>${effectiveMode() === 'dark' ? 'Yorug‘ rejim' : 'Qorong‘i rejim'}</span></button><button class="nav" data-act="settings">${IC.gear}<span>Sozlamalar</span></button></aside>
+  <button class="nav" data-act="theme">${IC.moon}<span>${effectiveMode() === 'dark' ? 'Yorug‘ rejim' : 'Qorong‘i rejim'}</span></button><button class="nav" data-act="settings">${IC.gear}<span>Sozlamalar</span></button><button class="nav upd" data-act="update" title="${esc(updTitle())}">${IC.refresh}<span>Yangilanishni tekshirish</span></button></aside>
   <main><header class="top"><label class="search">${IC.search}<input id="q" placeholder="Darslarni qidirish" value="${esc(S.q)}"></label>
   <select id="sort" aria-label="Saralash"><option value="modified" ${S.sort === 'modified' ? 'selected' : ''}>Oxirgi o‘zgarish</option><option value="name" ${S.sort === 'name' ? 'selected' : ''}>Nomi bo‘yicha</option><option value="size" ${S.sort === 'size' ? 'selected' : ''}>Hajmi bo‘yicha</option></select>
-  ${native() ? `<button class="btn" data-act="update" title="${esc(nativeVer())}">${IC.live}<span>Yangilanish</span></button>` : ''}<button class="btn" data-act="join">${IC.live}<span>Darsga qo‘shilish</span></button><button class="btn" data-act="import">${IC.upload}<span>Import</span></button><button class="btn" data-act="newfolder">${IC.folder}<span>Papka</span></button><button class="btn pri" data-act="new">${IC.plus}<span>Yangi dars</span></button></header>
-  <section class="content">${S.section === 'all' && !S.q && !S.folderId ? dash(live.length, favN, est?.usage ?? 0) : ''}<div class="crumb">${S.section === 'all' && !S.q ? `<button data-folder="">Darslar</button>${crumbs.map(c => `<span>/</span><button data-folder="${c.id}">${esc(c.name)}</button>`).join('')}` : `<b>${S.q ? 'Qidiruv natijalari' : titles[S.section]}</b>`}</div>
+  </header>
+  <section class="content">${S.section === 'all' && !S.q && !S.folderId ? dash(live.length, favN, est?.usage ?? 0) : S.section === 'all' && !S.q ? qaRow() : ''}<div class="crumb">${S.section === 'all' && !S.q ? `<button data-folder="">Darslar</button>${crumbs.map(c => `<span>/</span><button data-folder="${c.id}">${esc(c.name)}</button>`).join('')}` : `<b>${S.q ? 'Qidiruv natijalari' : titles[S.section]}</b>`}</div>
   ${showFolders.length ? `<div class="folders">${showFolders.map(f => `<button class="fold" data-folder="${f.id}">${IC.folder}<span>${esc(f.name)}</span><em>${S.metas.filter(m => m.folderId === f.id && !m.deletedAt).length}</em></button>`).join('')}</div>` : ''}
   ${docs.length ? `<div class="grid">${docs.map(card).join('')}</div>` : showFolders.length ? '' : empty}</section></main></div>`;
 }
+function qaRow(): string {
+  return `<div class="qa"><button data-act="new"><i>${IC.doc}</i><b>Yangi dars</b><small>Hujjat + doska</small></button><button data-act="join"><i>${IC.live}</i><b>Darsga qo‘shilish</b><small>Kod bilan kirish</small></button><button data-act="import"><i>${IC.upload}</i><b>Import</b><small>.fur · PDF · DOCX · rasm</small></button><button data-act="newfolder"><i>${IC.folder}</i><b>Yangi papka</b><small>Darslarni tartiblash</small></button></div>`;
+}
 function dash(n: number, fav: number, usage: number): string {
   const pages = S.metas.filter(m => !m.deletedAt).reduce((a, m) => a + m.pages, 0);
-  return `<div class="hero"><div><h1>FURQON <span>Online</span></h1><p>Bilim — kelajak kaliti. Hujjat va doskadan iborat darsni bitta .fur faylda yarating, o‘tkazing va yozib oling.</p><button class="btn pri" data-act="new">${IC.plus}<span>Yangi dars yaratish</span></button></div><img class="fur3d" src="fur-file.svg" alt="" width="132" height="132"></div>
-  <div class="sec-h">Tezkor amallar</div><div class="qa"><button data-act="new"><i>${IC.doc}</i><b>Yangi dars</b><small>Hujjat + doska</small></button><button data-act="join"><i>${IC.live}</i><b>Darsga qo‘shilish</b><small>Kod bilan kirish</small></button><button data-act="import"><i>${IC.upload}</i><b>Import</b><small>.fur · PDF · DOCX · rasm</small></button><button data-act="newfolder"><i>${IC.folder}</i><b>Yangi papka</b><small>Darslarni tartiblash</small></button></div>
+  return `<div class="hero"><div><h1>FURQON <span>Online</span></h1><p>Bilim — kelajak kaliti. Hujjat va doskadan iborat darsni bitta .fur faylda yarating, o‘tkazing va yozib oling.</p></div><img class="fur3d" src="fur-file.svg" alt="" width="132" height="132"></div>
+  <div class="sec-h">Tezkor amallar</div>${qaRow()}
   <div class="stats"><div class="stat"><small>Darslar</small><b>${n}</b></div><div class="stat"><small>Sahifalar</small><b>${pages}</b></div><div class="stat"><small>Sevimlilar</small><b>${fav}</b></div><div class="stat"><small>Xotira</small><b>${fmtSize(usage)}</b></div></div>
   <div class="sec-h">${n ? 'Darslarim' : 'Boshlash'}</div>`;
 }
@@ -274,6 +279,19 @@ function editView(): string {
   return `<div class="docv"><header class="top"><button class="ib" data-act="pages" aria-label="Sahifalar" title="Sahifalar">${IC.back}</button><input id="title" class="ttl" value="${esc(s.doc.title)}" maxlength="120" aria-label="Dars nomi"><span id="status" class="chip saved"></span>
   <button class="ib" data-act="present" aria-label="Taqdimot" title="Taqdimot">${IC.play}</button><button class="ib" data-act="prevpage" aria-label="Oldingi sahifa" ${i === 0 ? 'disabled' : ''}>${IC.back}</button><span class="pgno">${i + 1}/${n}</span><button class="ib flip" data-act="nextpage" aria-label="Keyingi sahifa" ${i === n - 1 ? 'disabled' : ''}>${IC.back}</button></header><div id="editor" class="editor ${s.doc.pages[i].type}"></div></div>`;
 }
+let loadedVer = '', updBusy = false;
+void fetch('version.json?t=' + Date.now(), { cache: 'no-store' }).then(r => r.json()).then(j => { loadedVer = String(j.web ?? ''); }).catch(() => { /* */ });
+const updTitle = () => native() ? nativeVer() : loadedVer ? `Joriy versiya: ${loadedVer}` : 'Yangilanishni tekshirish';
+async function checkUpdate() {
+  if (native()) { native()!.checkUpdate(); return; }
+  if (updBusy) return; updBusy = true;
+  try {
+    if (!navigator.onLine) throw new Error('offline');
+    const r = await fetch('version.json?t=' + Date.now(), { cache: 'no-store' }); const j = await r.json(), v = String(j.web ?? '');
+    if (loadedVer && v && v !== loadedVer) { const reg = await navigator.serviceWorker?.getRegistration?.(); await reg?.update().catch(() => { /* */ }); toast(`Yangi versiya topildi (${v}). Qayta yuklanmoqda…`); setTimeout(() => location.reload(), 900); }
+    else toast('Eng so‘nggi versiya o‘rnatilgan' + (v ? ` (${v})` : '') + ' ✓');
+  } catch { toast('Yangilanishni tekshirib bo‘lmadi. Internetni tekshiring.', true); } finally { updBusy = false; }
+}
 function nativeVer(): string { try { const v = JSON.parse(native()?.version() ?? '{}'); return `Versiya: web ${v.web}, APK ${v.apk}`; } catch { return 'Yangilanishni tekshirish'; } }
 // ---------- jonli dars ----------
 let live: TeacherSession | null = null;
@@ -283,37 +301,64 @@ function updatePill() {
   const r = live.roster(), h = r.filter(x => x.hand).length; el.classList.toggle('bad', !live.up());
   el.innerHTML = `<i></i>${live.up() ? 'Jonli' : 'Aloqa yo‘q'} · ${r.length}${h ? ` · ✋${h}` : ''}`;
 }
+const ics = (d: string, sz = 20) => `<svg viewBox="0 0 24 24" width="${sz}" height="${sz}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
+const ICL = {
+  mic: ics('<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0014 0M12 18v3"/>'), cam: ics('<rect x="3" y="6" width="13" height="12" rx="2"/><path d="M16 10l5-3v10l-5-3"/>'), pen: ics('<path d="M4 20l1-4L16 5l3 3L8 19z"/><path d="M14 7l3 3"/>'),
+  rec: ics('<circle cx="12" cy="12" r="6" fill="currentColor"/>'), pause: ics('<path d="M8 5v14M16 5v14"/>'), play: ics('<path d="M7 4l13 8-13 8z" fill="currentColor"/>'), stop: ics('<rect x="6" y="6" width="12" height="12" rx="2" fill="currentColor"/>'),
+  copy: ics('<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 012-2h9"/>'), x: ics('<path d="M6 6l12 12M18 6L6 18"/>'), users: ics('<circle cx="9" cy="8" r="3.2"/><path d="M3 20c0-3.3 2.7-5.5 6-5.5s6 2.2 6 5.5M16 5.2a3.2 3.2 0 010 5.6M18 14.8c2 .6 3.5 2.3 3.5 5.2"/>'),
+};
 function refreshRoster() {
   updatePill(); const ul = document.getElementById('rost'); if (!ul || !live) return; const r = live.roster();
-  const mm = live.media.supported; ul.innerHTML = r.length ? r.map(x => `<li class="${x.hand ? 'hand' : ''}"><span class="rn">${x.hand ? '✋ ' : ''}${esc(x.name)}${x.mic ? ' 🎤' : ''}${x.cam ? ' 📷' : ''}</span>${mm ? `<button class="tb ${x.aMic ? 'on' : ''}" data-pm="${esc(x.id)}:mic" title="Mikrofon ruxsati">🎤</button><button class="tb ${x.aCam ? 'on' : ''}" data-pm="${esc(x.id)}:cam" title="Kamera ruxsati">📷</button>` : ''}<button class="tb ${x.aWr ? 'on' : ''}" data-pm="${esc(x.id)}:wr" title="Doskaga yozish ruxsati">✎</button></li>`).join('') : '<li class="mut">Hali hech kim qo‘shilmadi</li>';
+  const mm = live.media.supported, tg = (x: { id: string }, k: string, on: boolean, ic: string, t: string) => `<button class="tg ${on ? 'on' : ''}" data-pm="${esc(x.id)}:${k}" aria-pressed="${on}" title="${t}" aria-label="${t}">${ic}</button>`;
+  ul.innerHTML = r.length ? r.map(x => `<li class="rl ${x.hand ? 'hand' : ''}"><span class="av">${esc((x.name || '?').trim().charAt(0).toUpperCase())}</span><span class="rn">${esc(x.name)}<small>${[x.hand ? '✋ qo‘l ko‘tardi' : '', x.mic ? 'gapiryapti' : '', x.cam ? 'kamerada' : ''].filter(Boolean).join(' · ') || 'qatnashmoqda'}</small></span><span class="rtg">${mm ? tg(x, 'mic', !!x.aMic, ICL.mic, 'Mikrofon ruxsati') + tg(x, 'cam', !!x.aCam, ICL.cam, 'Kamera ruxsati') : ''}${tg(x, 'wr', !!x.aWr, ICL.pen, 'Doskaga yozish ruxsati')}</span></li>`).join('') : '<li class="rl empty-r">Hali hech kim qo‘shilmadi. Kodni o‘quvchilarga yuboring.</li>';
   const c = document.getElementById('rcount'); if (c) c.textContent = String(r.length);
 }
-function endLive() { live?.end(); live = null; updatePill(); toast('Jonli dars tugatildi'); }
+/** Dialogdagi mikrofon/kamera/yozuv kartalarining holatini yangilaydi (dialog ochiq bo‘lsa) */
+function recDialogUi() {
+  const box = document.getElementById('ldrec'); const r = RM.rec;
+  if (box) box.innerHTML = r
+    ? `<div class="recrow"><span class="recdot ${r.paused() ? 'p' : ''}"></span><b class="rect">${fmtDur(r.elapsed())}</b><span class="mut small">${r.paused() ? 'Pauzada' : 'Yozilmoqda'}</span><span class="grow"></span><button class="tg" data-r="pause" title="${r.paused() ? 'Davom ettirish' : 'Pauza'}" aria-label="Pauza">${r.paused() ? ICL.play : ICL.pause}</button><button class="btn pri sm" data-r="stop">${ICL.stop}<span>Saqlash</span></button></div>`
+    : `<button class="tgl wide" data-r="start">${ICL.rec}<b>Yozib olishni boshlash</b><small>Faqat o‘quvchi ko‘radigan sahifa + ovoz. Boshqa ilovaga chiqsangiz ham, tahrirlashga o‘tsangiz ham davom etadi.</small></button>`;
+  const ck = document.getElementById('recst') as HTMLInputElement | null; if (ck) ck.checked = RM.students;
+  if (live) { for (const k of ['mic', 'cam'] as const) { const b = document.querySelector<HTMLElement>(`[data-m=${k}]`); if (b) { const on = k === 'mic' ? live.media.mic() : live.media.cam(); b.classList.toggle('on', on); b.setAttribute('aria-pressed', String(on)); const sm = b.querySelector('small'); if (sm) sm.textContent = on ? 'Yoqilgan' : 'O‘chiq'; } } }
+}
+function endLive() { live?.end(); live = null; updatePill(); toast('Jonli dars tugatildi'); if (RM.rec) void recStop(); }
 async function liveDialog() {
   if (!live) {
-    let srvVal = '';
-    const v = await modal<string>(`<h3>Jonli darsni boshlash</h3><p class="mut">Hozir ochiq turgan dars o‘quvchilarga real vaqtda ko‘rinadi. Ma’lumot shifrlangan holda bepul ommaviy server orqali o‘tadi, ro‘yxatdan o‘tish kerak emas.</p><label class="lbl">Server (ixtiyoriy)<input id="srv" placeholder="bo‘sh = bepul ommaviy server · yoki ws://192.168.1.5:8883" value="${esc(customBroker())}"></label><div class="row"><button class="btn" data-v="">Bekor qilish</button><button class="btn pri" data-v="go">Boshlash</button></div>`, (box, done) => {
-      box.querySelectorAll<HTMLElement>('[data-v]').forEach(b => b.addEventListener('click', () => { srvVal = box.querySelector<HTMLInputElement>('#srv')!.value; done(b.dataset.v || null); }));
+    let srvVal = '', autoRec = false;
+    const v = await modal<string>(`<h3>Jonli darsni boshlash</h3><p class="mut">Hozir ochiq turgan dars o‘quvchilarga real vaqtda ko‘rinadi. Ma’lumot shifrlangan holda bepul ommaviy server orqali o‘tadi, ro‘yxatdan o‘tish kerak emas.</p><label class="lbl">Server (ixtiyoriy)<input id="srv" placeholder="bo‘sh = bepul ommaviy server · yoki ws://192.168.1.5:8883" value="${esc(customBroker())}"></label>${recSupported() ? '<label class="ck"><input type="checkbox" id="autorec"> Dars boshlanishi bilan yozib olishni ham boshlash</label>' : ''}<div class="row"><button class="btn" data-v="">Bekor qilish</button><button class="btn pri" data-v="go">Boshlash</button></div>`, (box, done) => {
+      box.querySelectorAll<HTMLElement>('[data-v]').forEach(b => b.addEventListener('click', () => { srvVal = box.querySelector<HTMLInputElement>('#srv')!.value; autoRec = !!box.querySelector<HTMLInputElement>('#autorec')?.checked; done(b.dataset.v || null); }));
     });
     if (v !== 'go') return; toast('Server qidirilmoqda…');
     const srv = srvVal;
     try {
       setCustomBroker((srv ?? '').trim());
       live = await startTeacher(() => S.ses?.doc ?? null, () => (S.view === 'edit' ? S.pageIdx : 0), refreshRoster, n => toast(`✋ ${n} qo‘l ko‘tardi`), i => { if (S.view === 'edit' && S.pageIdx === i) (S.editor as unknown as BoardHandle | null)?.refresh?.(); });
-      updatePill();
+      updatePill(); if (autoRec) void recStart();
     } catch (e) { live = null; return void toast('Jonli dars boshlanmadi: ' + (e as Error).message, true); }
   }
-  const L = live!; const host = L.broker.replace(/^wss?:\/\//, '').replace(/[:/].*$/, '');
-  void modal<string>(`<h3>Jonli dars</h3><p class="mut">O‘quvchilar ilovada <b>“Darsga qo‘shilish”</b> tugmasini bosib, shu kodni kiritadi:</p><div class="bigcode" id="bcode">${fmtCode(L.code)}</div><div class="row"><button class="btn" data-v="copy">Kodni nusxalash</button></div><p class="mut small">Server: ${esc(host)} · xabarlar shifrlangan</p><h4>Qatnashuvchilar (<span id="rcount">0</span>)</h4><ul class="rost" id="rost"></ul>${L.media.supported ? `<p class="mut small">🎤/📷 tugmalari — o‘quvchiga mikrofon/kamera ruxsati. Ruxsatni istalgan payt qaytarib olasiz.</p><div class="row wrap"><button class="btn ${L.media.mic() ? 'pri' : ''}" data-m="mic">🎤 Mening mikrofonim</button><button class="btn ${L.media.cam() ? 'pri' : ''}" data-m="cam">📷 Mening kamerám</button></div><div class="row wrap"><button class="btn" data-m="allmic">Hammaga mikrofon</button><button class="btn" data-m="allcam">Hammaga kamera</button><button class="btn" data-m="allwr">Hammaga yozish</button><button class="btn" data-m="none">Hammadan olish</button></div>` : '<p class="mut small">Bu qurilmada ovoz/video qo‘llab-quvvatlanmaydi.</p>'}<div class="row"><button class="btn dng" data-v="end">Darsni tugatish</button><button class="btn pri" data-v="close">Yopish</button></div>`, (box, done) => {
-    refreshRoster();
+  const L = live!; const host = L.broker.replace(/^wss?:\/\//, '').replace(/[:/].*$/, ''), mm = L.media.supported;
+  const chip = (k: string, ic: string, t: string) => `<button class="chip" data-m="${k}">${ic}<span>${t}</span></button>`;
+  void modal<string>(`<div class="ld-h"><div><h3>Jonli dars</h3><span class="ld-st"><i></i>Dars davom etmoqda</span></div><button class="ib" data-v="done" aria-label="Yopish" title="Yopish">${ICL.x}</button></div>
+  <div class="ld-body"><div class="ld-col">
+    <section class="ld-card"><small class="mut">O‘quvchilar ilovada <b>“Darsga qo‘shilish”</b> ni bosib shu kodni kiritadi</small><div class="bigcode" id="bcode">${fmtCode(L.code)}</div><div class="ld-row"><button class="btn" data-v="copy">${ICL.copy}<span>Kodni nusxalash</span></button></div><small class="mut">Server: ${esc(host)} · xabarlar shifrlangan</small></section>
+    ${mm ? `<section class="ld-card"><h4>Mening ovozim va videom</h4><div class="ld-tgs"><button class="tgl" data-m="mic" aria-pressed="false">${ICL.mic}<b>Mikrofon</b><small>O‘chiq</small></button><button class="tgl" data-m="cam" aria-pressed="false">${ICL.cam}<b>Kamera</b><small>O‘chiq</small></button></div></section>` : '<section class="ld-card"><small class="mut">Bu qurilmada ovoz/video qo‘llab-quvvatlanmaydi.</small></section>'}
+    ${recSupported() ? `<section class="ld-card"><h4>Yozib olish</h4><div id="ldrec"></div><label class="ck"><input type="checkbox" id="recst" checked> O‘quvchilar ovozini ham yozish</label></section>` : ''}
+  </div><div class="ld-col"><section class="ld-card"><h4>${ICL.users}<span>Qatnashuvchilar</span><span class="cnt" id="rcount">0</span></h4>
+    ${mm ? `<div class="ld-bulk">${chip('allmic', ICL.mic, 'Hammaga mikrofon')}${chip('allcam', ICL.cam, 'Hammaga kamera')}${chip('allwr', ICL.pen, 'Hammaga yozish')}${chip('none', ICL.x, 'Hammasini olish')}</div>` : `<div class="ld-bulk">${chip('allwr', ICL.pen, 'Hammaga yozish')}${chip('none', ICL.x, 'Hammasini olish')}</div>`}
+    <ul class="rost" id="rost"></ul><p class="mut small">Tugmalar — o‘quvchiga ruxsat: mikrofon, kamera, doskaga yozish. Istalgan payt qaytarib olinadi.</p></section></div></div>
+  <div class="ld-f"><button class="btn dng" data-v="end">Darsni tugatish</button><button class="btn pri" data-v="done">Yopish</button></div>`, (box, done) => {
+    box.classList.add('ldlg'); refreshRoster(); recDialogUi();
     box.addEventListener('click', e => {
-      const t = e.target as HTMLElement, pm = t.closest<HTMLElement>('[data-pm]')?.dataset.pm, mm = t.closest<HTMLElement>('[data-m]');
+      const t = e.target as HTMLElement, pm = t.closest<HTMLElement>('[data-pm]')?.dataset.pm, mb = t.closest<HTMLElement>('[data-m]'), rb = t.closest<HTMLElement>('[data-r]')?.dataset.r;
       if (pm) { const [id, k] = pm.split(':'), en = L.roster().find(x => x.id === id); if (en) L.media.perm(id, k === 'mic' ? { mic: !en.aMic } : k === 'wr' ? { wr: !en.aWr } : { cam: !en.aCam }); return; }
-      if (!mm) return; const a = mm.dataset.m!;
-      if (a === 'mic') void L.media.setMic(!L.media.mic()).then(() => mm.classList.toggle('pri', L.media.mic()), er => toast((er as Error).message, true));
-      else if (a === 'cam') void L.media.setCam(!L.media.cam()).then(() => mm.classList.toggle('pri', L.media.cam()), er => toast((er as Error).message, true));
+      if (rb) { if (rb === 'start') void recStart(); else if (rb === 'stop') void recStop(); else if (rb === 'pause') recPause(); return; }
+      if (!mb) return; const a = mb.dataset.m!;
+      if (a === 'mic') void L.media.setMic(!L.media.mic()).then(recDialogUi, er => toast((er as Error).message, true));
+      else if (a === 'cam') void L.media.setCam(!L.media.cam()).then(recDialogUi, er => toast((er as Error).message, true));
       else if (a === 'allmic') L.media.permAll({ mic: true }); else if (a === 'allcam') L.media.permAll({ cam: true }); else if (a === 'allwr') L.media.permAll({ wr: true }); else if (a === 'none') L.media.permAll({ mic: false, cam: false, wr: false });
     });
+    box.addEventListener('change', e => { const t = e.target as HTMLInputElement; if (t.id === 'recst') RM.students = t.checked; });
     box.querySelectorAll<HTMLElement>('[data-v]').forEach(b => b.addEventListener('click', () => { const v = b.dataset.v; if (v === 'copy') { void navigator.clipboard?.writeText(fmtCode(L.code) + (L.code[0] === '9' && L.broker ? ' ' + L.broker : '')).then(() => toast('Kod nusxalandi'), () => toast('Nusxalab bo‘lmadi, kodni qo‘lda yozing', true)); } else { if (v === 'end') endLive(); done(v!); } }));
   });
 }
@@ -333,26 +378,42 @@ async function joinDialog() {
   });
 }
 const fmtDur = (ms: number) => { const t = Math.round(ms / 1000); return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`; };
-async function finishRec(r: Rec, title: string) {
-  const out = await r.stop(); if (!out.blob.size) return toast('Yozuv bo‘sh chiqdi', true);
-  const ext = out.mime.includes('mp4') ? 'mp4' : 'webm'; download(new Uint8Array(await out.blob.arrayBuffer()), title + ' — dars yozuvi', '.' + ext, out.mime);
+// ---------- yozib olish (taqdimot/tahrirlash/jonli darsdan mustaqil) ----------
+const RM = { rec: null as Rec | null, frames: null as FrameCtl | null, title: '', tick: 0, view: null as PresentHandle | null, focus: null as { i: number; v: number } | null, students: true };
+async function recStart() {
+  if (RM.rec || !S.ses) return; if (!recSupported()) return void toast('Bu qurilmada yozib olish qo‘llab-quvvatlanmaydi', true);
+  const fr = makeFrames({ getDoc: () => S.ses?.doc ?? null, getIdx: () => S.view === 'edit' ? S.pageIdx : Math.max(0, live ? live.page() : S.pageIdx), getView: () => RM.view, getFocus: () => RM.focus });
+  const L = live;
+  try {
+    RM.rec = await startRecorder({ frame: (g, W, H) => fr.frame(g, W, H), ownMic: !L, mic: () => live && live.media.mic() ? live.media.micTrack() : null, students: () => live?.media.remote() ?? [], includeStudents: () => RM.students, onStop: () => fr.dispose() });
+  } catch (e) { fr.dispose(); return void toast((e as Error).message, true); }
+  RM.frames = fr; RM.title = S.ses.doc.title;
+  if (L && !L.media.mic()) toast('Yozish boshlandi. Mikrofoningiz o‘chiq — ovozingiz yozuvga tushishi uchun 🎤 ni yoqing', true);
+  else toast(RM.rec.audio ? 'Yozish boshlandi: o‘quvchilar ko‘rgan sahifa + ovoz' : 'Yozish boshlandi — mikrofon yo‘q, ovozsiz', !RM.rec.audio);
+  clearInterval(RM.tick); RM.tick = window.setInterval(recNotify, 500); recNotify();
+}
+async function recStop() {
+  const r = RM.rec; if (!r) return; RM.rec = null; RM.frames = null; clearInterval(RM.tick); recNotify();
+  const out = await r.stop(); if (!out.blob.size) return void toast('Yozuv bo‘sh chiqdi', true);
+  const ext = out.mime.includes('mp4') ? 'mp4' : 'webm'; download(new Uint8Array(await out.blob.arrayBuffer()), RM.title + ' — dars yozuvi', '.' + ext, out.mime);
   toast(`Yozuv saqlandi (${fmtDur(out.ms)}, ${(out.blob.size / 1048576).toFixed(1)} MB)`);
+}
+function recPause() { const r = RM.rec; if (!r) return; if (r.paused()) { r.resume(); toast('Yozish davom etmoqda'); } else { r.pause(); toast('Yozish pauzada'); } recNotify(); }
+const recToggle = () => RM.rec ? void recStop() : void recStart();
+function recNotify() {
+  const r = RM.rec, v = RM.view, t = r ? fmtDur(r.elapsed()) : '';
+  if (v) { v.btn('rec', { on: !!r, title: r ? 'To‘xtatish va saqlash' : 'Darsni yozib olish' }); v.btn('recp', { hide: !r }); v.recInfo(r ? t : null, !!r?.paused()); if (r) v.status(`${r.paused() ? '⏸ PAUZA' : '● REC'} ${t}`); }
+  let el = document.getElementById('recpill');
+  if (!r) el?.remove(); else { if (!el) { el = document.createElement('button'); el.id = 'recpill'; el.className = 'livepill recpill'; el.setAttribute('aria-label', 'Yozuv boshqaruvi'); el.addEventListener('click', () => void liveDialog()); document.body.append(el); } el.classList.toggle('paused', r.paused()); el.innerHTML = `<i></i>${r.paused() ? 'Pauza' : 'REC'} ${t}`; }
+  recDialogUi();
 }
 function present(from: number) {
   const ses = S.ses; if (!ses) return; if (!ses.doc.pages.length) return toast('Sahifa yo‘q');
-  let rec: Rec | null = null, tick = 0; const L = live;
-  const view: PresentHandle = startPresentation(ses.doc, from, () => { clearInterval(tick); if (rec) void finishRec(rec, ses.doc.title); rec = null; render(); }, { ...(L ? { hooks: L.hooks } : {}), media: !!L?.media.supported, record: recSupported(), onBtn: b => {
-    if (b === 'recp') {
-      if (!rec) return; const r = rec;
-      if (r.paused()) { r.resume(); toast('Yozish davom etmoqda'); } else { r.pause(); toast('Yozish pauzada — davom ettirish uchun ▶ ni bosing'); }
-      view.recInfo(fmtDur(r.elapsed()), r.paused()); view.status(`${r.paused() ? '⏸ PAUZA' : '● REC'} ${fmtDur(r.elapsed())}`);
-    } else if (b === 'rec') { void (async () => {
-      if (rec) { const r = rec; rec = null; clearInterval(tick); view.btn('rec', { on: false, title: 'Darsni yozib olish' }); view.btn('recp', { hide: true }); view.recInfo(null); await finishRec(r, ses.doc.title); return; }
-      try { rec = await startRecorder(view, L?.media.micTrack()); } catch (e) { return void toast((e as Error).message, true); }
-      toast(rec.audio ? 'Yozish boshlandi (faqat shu sahifa + ovozingiz)' : 'Yozish boshlandi — mikrofon yo‘q, ovozsiz', !rec.audio); view.btn('rec', { on: true, title: 'To‘xtatish va saqlash' }); view.btn('recp', { hide: false }); view.recInfo('0:00');
-      tick = window.setInterval(() => { if (rec) { view.recInfo(fmtDur(rec.elapsed()), rec.paused()); view.status(`${rec.paused() ? '⏸ PAUZA' : '● REC'} ${fmtDur(rec.elapsed())}`); } }, 500);
-    })(); } else if (L) L.onBtn(b, view);
+  const L = live;
+  const view: PresentHandle = startPresentation(ses.doc, from, () => { if (RM.view === view) RM.view = null; render(); }, { ...(L ? { hooks: L.hooks } : {}), media: !!L?.media.supported, record: recSupported(), onBtn: b => {
+    if (b === 'rec') recToggle(); else if (b === 'recp') recPause(); else if (L) L.onBtn(b, view);
   } });
+  RM.view = view; recNotify();
 }
 function openPage(i: number) {
   const p = S.ses!.doc.pages[i]; if (!p) return;
@@ -363,7 +424,7 @@ function render() {
   const keepQ = document.activeElement?.id === 'q', pos = (document.getElementById('q') as HTMLInputElement | null)?.selectionStart ?? 0;
   root.innerHTML = S.view === 'home' ? home() : S.view === 'doc' ? docView() : editView();
   if (S.view !== 'home') updateStatus();
-  if (S.view === 'edit' && S.ses) { const ses = S.ses; const hp = { doc: ses.doc, page: ses.doc.pages[S.pageIdx], index: S.pageIdx, onChange: changed, focus: (u: number, v: number) => live?.focus(S.pageIdx, u, v), toast, ask: askText }; const el = document.getElementById('editor')!; S.editor = hp.page.type === 'board' ? mountBoard(el, hp) : mountEditor(el, hp); }
+  if (S.view === 'edit' && S.ses) { const ses = S.ses; const hp = { doc: ses.doc, page: ses.doc.pages[S.pageIdx], index: S.pageIdx, onChange: changed, focus: (u: number, v: number) => { RM.focus = { i: S.pageIdx, v }; live?.focus(S.pageIdx, u, v); }, toast, ask: askText }; const el = document.getElementById('editor')!; S.editor = hp.page.type === 'board' ? mountBoard(el, hp) : mountEditor(el, hp); }
   if (S.view === 'doc' && S.ses && S.pview === 'grid') { const h = document.getElementById('pgridhost'); if (h) S.grid = mountPageGrid(h, S.ses.doc, (a, b) => void sesAction('moveto', a + ':' + b)); }
   if (keepQ) { const q = document.getElementById('q') as HTMLInputElement; q.focus(); q.setSelectionRange(pos, pos); }
 }
@@ -382,7 +443,7 @@ root.addEventListener('click', async e => {
     if (a.startsWith('m:')) return void menuAction(a.slice(2), id!);
     if (a === 'fav') return void menuAction('fav', id!);
     if (a === 'new') return void createDoc(); if (a === 'newfolder') return void createFolder();
-    if (a === 'update') { native()?.checkUpdate(); return; }
+    if (a === 'update') { void checkUpdate(); return; }
     if (a === 'join') return void joinDialog();
     if (a === 'import') return (document.getElementById('file') as HTMLInputElement).click();
     if (a === 'back') return void closeDoc();

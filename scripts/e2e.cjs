@@ -1,5 +1,5 @@
 const {chromium}=require('/opt/npm-tools/node_modules/playwright');
-const SHOT=process.argv[2]||'/home/claude/fur-platform/docs/shots';require('fs').mkdirSync(SHOT,{recursive:true});
+const SHOT=process.argv[2]||'/home/claude/fur-holo/docs/shots';require('fs').mkdirSync(SHOT,{recursive:true});
 let pass=0,fail=0;const ok=(n,c,x='')=>{c?pass++:fail++;console.log((c?'PASS ':'FAIL ')+n+(x?'  '+x:''));};
 (async()=>{
 const b=await chromium.launch();const ctx=await b.newContext({viewport:{width:1280,height:800},deviceScaleFactor:1,colorScheme:'light'});await ctx.addInitScript(()=>{try{localStorage.setItem('fur.pview','list')}catch{}});
@@ -8,7 +8,7 @@ await pg.goto('http://localhost:8765/');await pg.waitForSelector('.empty');
 await pg.screenshot({path:SHOT+'/1-bosh-sahifa-bosh.png'});
 ok('bo‘sh holat ko‘rinadi',await pg.locator('.empty h2').innerText()==='Birinchi darsingizni yarating');
 // yaratish
-const mk=async(name)=>{await pg.click('header [data-act=new]');await pg.fill('.dlg input',name);await pg.click('.dlg [data-x="1"]');await pg.waitForSelector('.docv');};
+const mk=async(name)=>{await pg.click('.qa [data-act=new]');await pg.fill('.dlg input',name);await pg.click('.dlg [data-x="1"]');await pg.waitForSelector('.docv');};
 await mk('Ingliz tili 5-dars');
 await pg.click('[data-sa=adddoc]');await pg.click('[data-sa=addboard]');await pg.waitForTimeout(2200);
 ok('hujjat 3 sahifa, avtosaqlandi',await pg.locator('.pg').count()===3&&(await pg.locator('#status').innerText()).startsWith('Saqlandi'));
@@ -24,7 +24,7 @@ await pg.setInputFiles('#file','/tmp/bad.fur');await pg.waitForTimeout(500);
 ok('buzilgan fayl rad etiladi',(await pg.locator('#toast').getAttribute('class')).includes('bad'),await pg.locator('#toast').innerText());
 // sevimli, papka
 await pg.locator('.card').first().hover();await pg.locator('.card').first().locator('[data-act=fav]').click();
-await pg.click('header [data-act=newfolder]');await pg.fill('.dlg input','8-sinf');await pg.click('.dlg [data-x="1"]');await pg.waitForSelector('.fold');
+await pg.click('.qa [data-act=newfolder]');await pg.fill('.dlg input','8-sinf');await pg.click('.dlg [data-x="1"]');await pg.waitForSelector('.fold');
 await pg.locator('.card',{hasText:'Matematika'}).locator('[data-act=menu]').click();await pg.click('[data-act="m:move"]');await pg.click('.pitem:has-text("8-sinf")');await pg.waitForTimeout(300);
 ok('papkaga ko‘chirildi',(await pg.locator('.card').count())===2&&await pg.locator('.fold em').innerText()==='1');
 await pg.screenshot({path:SHOT+'/3-fayl-menejeri.png'});

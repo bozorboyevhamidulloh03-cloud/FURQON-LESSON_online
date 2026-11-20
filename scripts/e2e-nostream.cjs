@@ -7,7 +7,7 @@ await ctx.addInitScript(()=>{delete window.CompressionStream;delete window.Decom
 const pg=await ctx.newPage();ctx.setDefaultTimeout(8000);const errs=[];pg.on('pageerror',e=>errs.push(e.message));
 await pg.goto('http://localhost:8765/');await pg.waitForSelector('.empty');
 ok('oqimlar yo‘qligi simulyatsiya qilindi',await pg.evaluate(()=>typeof CompressionStream==='undefined'));
-await pg.click('header [data-act=new]');await pg.fill('.dlg input','Zaxira sinovi');await pg.click('.dlg [data-x="1"]');await pg.waitForSelector('.docv');
+await pg.click('.qa [data-act=new]');await pg.fill('.dlg input','Zaxira sinovi');await pg.click('.dlg [data-x="1"]');await pg.waitForSelector('.docv');
 ok('yangi hujjat ochildi (oqimsiz)',true);
 await pg.waitForTimeout(1500);await pg.click('[data-act=back]');await pg.waitForSelector('.grid');
 ok('ro‘yxatda ko‘rinadi',(await pg.locator('.grid').innerText()).includes('Zaxira sinovi'));

@@ -21,10 +21,10 @@ const CH = 24000;
 
 // ---------- O'QITUVCHI ----------
 export interface RosterEntry { id: string; name: string; last: number; hand: boolean; aMic?: boolean; aCam?: boolean; aWr?: boolean; mic?: boolean; cam?: boolean }
-export interface TeacherMedia { supported: boolean; mic(): boolean; cam(): boolean; setMic(on: boolean): Promise<void>; setCam(on: boolean): Promise<void>; perm(id: string, p: { mic?: boolean; cam?: boolean; wr?: boolean }): void; permAll(p: { mic?: boolean; cam?: boolean; wr?: boolean }): void; micTrack(): MediaStreamTrack | null }
+export interface TeacherMedia { supported: boolean; remote(): MediaStream[]; mic(): boolean; cam(): boolean; setMic(on: boolean): Promise<void>; setCam(on: boolean): Promise<void>; perm(id: string, p: { mic?: boolean; cam?: boolean; wr?: boolean }): void; permAll(p: { mic?: boolean; cam?: boolean; wr?: boolean }): void; micTrack(): MediaStreamTrack | null }
 export interface TeacherSession {
   code: string; broker: string; roster(): RosterEntry[]; hooks: PresentHooks; media: TeacherMedia; onBtn(b: PresBtn, view: PresentHandle): void;
-  focus(i: number, u: number, v: number): void; sendPage(i: number): void; touch(i: number): void; end(): void; up(): boolean;
+  focus(i: number, u: number, v: number): void; page(): number; sendPage(i: number): void; touch(i: number): void; end(): void; up(): boolean;
 }
 export async function startTeacher(getDoc: () => FurDocument | null, getIdx: () => number, onRoster: () => void, onHandUp: (n: string) => void, onRemote?: (i: number) => void): Promise<TeacherSession> {
   const custom = customBroker(), order = custom ? [custom] : BROKERS, body = newCode(0);
@@ -85,7 +85,7 @@ export async function startTeacher(getDoc: () => FurDocument | null, getIdx: () 
   hb = window.setInterval(() => { sendHb(); const t = Date.now(); let ch = false; for (const [id, e] of roster) if (t - e.last > 30000) { roster.delete(id); ch = true; } if (ch) onRoster(); }, 4000);
   const announce = () => L.send({ k: 'tm', mic: !!tMic, cam: !!tCam });
   const media: TeacherMedia = {
-    supported: !!rtc, mic: () => !!tMic, cam: () => !!tCam, micTrack: () => tMic,
+    supported: !!rtc, remote: () => [...streams.values()], mic: () => !!tMic, cam: () => !!tCam, micTrack: () => tMic,
     async setMic(on) { if (!rtc) throw new Error('Bu qurilmada ovoz qo‘llab-quvvatlanmaydi'); if (on) { if (tMic) return; tMic = await getTrack('audio'); rtc.setTrack('audio', tMic); } else { tMic?.stop(); tMic = null; rtc.setTrack('audio', null); } announce(); },
     async setCam(on) { if (!rtc) throw new Error('Bu qurilmada video qo‘llab-quvvatlanmaydi'); if (on) { if (tCam) return; tCam = await getTrack('video'); rtc.setTrack('video', tCam); } else { tCam?.stop(); tCam = null; rtc.setTrack('video', null); } announce(); },
     perm(id, p) { const e = roster.get(id); if (!e) return; if (p.mic !== undefined) e.aMic = p.mic; if (p.cam !== undefined) e.aCam = p.cam; if (p.wr !== undefined) e.aWr = p.wr; sendPerm(e); onRoster(); },
@@ -98,7 +98,7 @@ export async function startTeacher(getDoc: () => FurDocument | null, getIdx: () 
   const hooks: PresentHooks = { page: i => sendPage(i), laser: (u, v, on) => L.send({ k: 'laser', u, v, on }), ink: pts => L.send({ k: 'ink', pts }), focus: (u, v) => L.send({ k: 'focus', i: cur, u, v }) };
   sendPage(Math.max(0, Math.min((getDoc()?.pages.length ?? 1) - 1, getIdx())));
   return {
-    code, broker: L.broker(), roster: () => [...roster.values()], hooks, media, onBtn, sendPage, focus(i, u, v) { const t = Date.now(); if (t - lastFocus < 150) return; lastFocus = t; L.send({ k: 'focus', i, u, v }); }, up: () => upNow,
+    code, broker: L.broker(), roster: () => [...roster.values()], hooks, media, onBtn, page: () => cur, sendPage, focus(i, u, v) { const t = Date.now(); if (t - lastFocus < 150) return; lastFocus = t; L.send({ k: 'focus', i, u, v }); }, up: () => upNow,
     touch: touchSync,
     end() { if (ended) return; ended = true; clearTimeout(timer); clearInterval(hb); tMic?.stop(); tCam?.stop(); tMic = tCam = null; rtc?.closeAll(); dropAll(); L.send({ k: 'end' }); setTimeout(() => L.close(), 400); },
   };

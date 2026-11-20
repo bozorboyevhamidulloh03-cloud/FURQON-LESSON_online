@@ -1,12 +1,12 @@
 const {chromium}=require('/opt/npm-tools/node_modules/playwright');const fs=require('fs');const {execSync}=require('child_process');
-const SHOT=process.argv[2]||'/home/claude/fur-platform/docs/shots8';fs.mkdirSync(SHOT,{recursive:true});
+const SHOT=process.argv[2]||'/home/claude/fur-holo/docs/shots8';fs.mkdirSync(SHOT,{recursive:true});
 let pass=0,fail=0;const ok=(n,c,x='')=>{c?pass++:fail++;console.log((c?'PASS ':'FAIL ')+n+(x?'  '+x:''));};
 (async()=>{
 const b=await chromium.launch({args:['--use-fake-device-for-media-stream','--use-fake-ui-for-media-stream']});const ctx=await b.newContext({viewport:{width:1100,height:700},permissions:['microphone','camera'],acceptDownloads:true});ctx.setDefaultTimeout(15000);
 await ctx.addInitScript(()=>{try{localStorage.setItem('fur.pview','list')}catch{}});
 const pg=await ctx.newPage();const errs=[];pg.on('pageerror',e=>errs.push(e.message));
 await pg.goto('http://localhost:8765/');await pg.waitForSelector('.empty');
-await pg.click('header [data-act=new]');await pg.fill('.dlg input','Yozuv');await pg.click('.dlg [data-x="1"]');await pg.waitForSelector('.docv');
+await pg.click('.qa [data-act=new]');await pg.fill('.dlg input','Yozuv');await pg.click('.dlg [data-x="1"]');await pg.waitForSelector('.docv');
 await pg.click('[data-sa=adddoc]');await pg.waitForTimeout(200);
 await pg.evaluate(()=>{const ps=__fur.S.ses.doc.pages;ps[0].objects=[{t:'rect',id:'r1',x1:100,y1:100,x2:500,y2:300,c:'#e03131',w:8},{t:'text',id:'t1',x:150,y:160,tx:'Doska yozuvi',s:48,c:'#1971c2'}];const d=ps.find(x=>x.type==='document');d.blocks=[{id:'h',type:'heading',level:1,runs:[{t:'Hujjat sarlavhasi',c:'#2f9e44'}]},{id:'p',type:'paragraph',runs:[{t:'Bu yozuvga tushishi kerak bo‘lgan matn.'}]}];});
 await pg.click('[data-act=present]').catch(async()=>{await pg.click('[data-sa=present]')});await pg.waitForSelector('.pres');

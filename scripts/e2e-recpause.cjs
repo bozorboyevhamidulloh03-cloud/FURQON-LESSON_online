@@ -6,7 +6,7 @@ const b=await chromium.launch({args:['--use-fake-device-for-media-stream','--use
 const ctx=await b.newContext({viewport:{width:1100,height:700},permissions:['microphone','camera'],acceptDownloads:true});ctx.setDefaultTimeout(15000);
 const pg=await ctx.newPage();const errs=[];pg.on('pageerror',e=>errs.push(e.message));
 await pg.goto('http://localhost:8765/');await pg.waitForSelector('.empty');
-await pg.click('header [data-act=new]');await pg.fill('.dlg input','Pauza');await pg.click('.dlg [data-x="1"]');await pg.waitForSelector('.docv');
+await pg.click('.qa [data-act=new]');await pg.fill('.dlg input','Pauza');await pg.click('.dlg [data-x="1"]');await pg.waitForSelector('.docv');
 await pg.click('[data-sa=addboard]');await pg.waitForTimeout(200);
 await pg.evaluate(()=>{__fur.S.ses.doc.pages[0].objects=[{t:'rect',id:'r1',x1:100,y1:100,x2:500,y2:300,c:'#e03131',w:8}]});
 await pg.click('[data-sa=present]').catch(async()=>{await pg.click('[data-act=present]')});await pg.waitForSelector('.pres');

@@ -7,10 +7,10 @@ await pg.goto('http://localhost:8765/');await pg.waitForSelector('.empty');
 ok('Yangilanish tugmasi faqat ilovada ko‘rinadi (versiya sarlavhasi bilan)',await pg.locator('[data-act=update]').count()===1&&(await pg.locator('[data-act=update]').getAttribute('title'))==='Versiya: web 7, APK 1');
 await pg.click('[data-act=update]');ok('Yangilanish tugmasi native.checkUpdate() ni chaqiradi',(await pg.evaluate(()=>__calls.some(c=>c[0]==='check'))));
 ok('ilovada service worker ro‘yxatga olinmadi',(await pg.evaluate(async()=>(await navigator.serviceWorker.getRegistrations()).length))===0);
-await pg.click('header [data-act=new]');await pg.fill('.dlg input','Native sinov');await pg.click('.dlg [data-x="1"]');await pg.waitForSelector('.docv');
+await pg.click('.qa [data-act=new]');await pg.fill('.dlg input','Native sinov');await pg.click('.dlg [data-x="1"]');await pg.waitForSelector('.docv');
 ok('orqaga tugmasi: dars → fayllar ro‘yxati',await pg.evaluate(()=>__furBack())===true&&await pg.locator('.card,.empty').first().isVisible()&&await pg.locator('.docv').count()===0);
 ok('fayllar ro‘yxatida orqaga: false (ilovadan chiqish mumkin)',await pg.evaluate(()=>__furBack())===false);
-await pg.click('header [data-act=newfolder]');await pg.waitForSelector('.dlg');ok('orqaga tugmasi dialogni yopadi',await pg.evaluate(()=>__furBack())===true&&await pg.locator('.dlg').count()===0);
+await pg.click('.qa [data-act=newfolder]');await pg.waitForSelector('.dlg');ok('orqaga tugmasi dialogni yopadi',await pg.evaluate(()=>__furBack())===true&&await pg.locator('.dlg').count()===0);
 // eksport native orqali
 await pg.waitForSelector('.card');await pg.locator('.card').first().click();await pg.waitForSelector('.docv');await pg.click('[data-sa=export]');await pg.waitForTimeout(600);
 const calls=await pg.evaluate(()=>__calls.filter(c=>c[0]==='save'));

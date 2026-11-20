@@ -1,11 +1,11 @@
 const {chromium}=require('/opt/npm-tools/node_modules/playwright');
-const SHOT=process.argv[2]||'/home/claude/fur-platform/docs/shots8';require('fs').mkdirSync(SHOT,{recursive:true});
+const SHOT=process.argv[2]||'/home/claude/fur-holo/docs/shots8';require('fs').mkdirSync(SHOT,{recursive:true});
 let pass=0,fail=0;const ok=(n,c,x='')=>{c?pass++:fail++;console.log((c?'PASS ':'FAIL ')+n+(x?'  '+x:''));};
 (async()=>{
 const b=await chromium.launch();const ctx=await b.newContext({viewport:{width:1300,height:1000}});ctx.setDefaultTimeout(12000);
 const pg=await ctx.newPage();const errs=[];pg.on('pageerror',e=>errs.push(e.message));
 await pg.goto('http://localhost:8765/');await pg.waitForSelector('.empty');
-await pg.click('header [data-act=new]');await pg.fill('.dlg input','Tartib');await pg.click('.dlg [data-x="1"]');await pg.waitForSelector('.docv');
+await pg.click('.qa [data-act=new]');await pg.fill('.dlg input','Tartib');await pg.click('.dlg [data-x="1"]');await pg.waitForSelector('.docv');
 await pg.click('[data-sa=adddoc]');await pg.click('[data-sa=adddoc]');await pg.click('[data-sa=adddoc]');
 await pg.evaluate(()=>{const ps=__fur.S.ses.doc.pages;ps.forEach((p,i)=>{if(p.type==='document')p.blocks=[{id:'t'+i,type:'paragraph',runs:[{t:'Sahifa-'+i}]}]});});
 await pg.click('[data-act="pview:list"]');await pg.click('[data-act="pview:grid"]');await pg.waitForSelector('.pcell');

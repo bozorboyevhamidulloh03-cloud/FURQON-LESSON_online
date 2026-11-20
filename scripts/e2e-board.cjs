@@ -1,11 +1,11 @@
 const {chromium}=require('/opt/npm-tools/node_modules/playwright');
-const SHOT=process.argv[2]||'/home/claude/fur-platform/docs/shots3';require('fs').mkdirSync(SHOT,{recursive:true});
+const SHOT=process.argv[2]||'/home/claude/fur-holo/docs/shots3';require('fs').mkdirSync(SHOT,{recursive:true});
 let pass=0,fail=0;const ok=(n,c,x='')=>{c?pass++:fail++;console.log((c?'PASS ':'FAIL ')+n+(x?'  '+x:''));};
 (async()=>{
 const b=await chromium.launch();const ctx=await b.newContext({viewport:{width:1280,height:900}});await ctx.addInitScript(()=>{try{localStorage.setItem('fur.pview','list')}catch{}});ctx.setDefaultTimeout(8000);
 const pg=await ctx.newPage();const errs=[];pg.on('pageerror',e=>errs.push(e.message));pg.on('console',m=>{if(m.type()==='error')errs.push(m.text())});
 await pg.goto('http://localhost:8765/');await pg.waitForSelector('.empty');
-await pg.click('header [data-act=new]');await pg.fill('.dlg input','Fizika: Nyuton qonunlari');await pg.click('.dlg [data-x="1"]');await pg.waitForSelector('.docv');
+await pg.click('.qa [data-act=new]');await pg.fill('.dlg input','Fizika: Nyuton qonunlari');await pg.click('.dlg [data-x="1"]');await pg.waitForSelector('.docv');
 await pg.click('[data-sa=addboard]');await pg.locator('.pg.openable').last().click();await pg.waitForSelector('#bc');await pg.waitForTimeout(200);
 const O=()=>pg.evaluate(()=>JSON.parse(JSON.stringify(__board.page.objects)));
 const V=()=>pg.evaluate(()=>({...__board.v}));
@@ -71,7 +71,7 @@ await pg.click('[data-act=pages]');await pg.waitForSelector('.plist2');await pg.
 const m=await b.newContext({viewport:{width:390,height:820},hasTouch:true,isMobile:true,deviceScaleFactor:2});await m.addInitScript(()=>{try{localStorage.setItem('fur.pview','list')}catch{}});const mp=await m.newPage();mp.on('pageerror',e=>errs.push(e.message));
 await mp.goto('http://localhost:8765/');await mp.waitForSelector('.empty');
 await mp.evaluate(async()=>{});
-await mp.click('header [data-act=new]');await mp.fill('.dlg input','Mobil');await mp.click('.dlg [data-x="1"]');await mp.waitForSelector('.docv');await mp.click('[data-sa=addboard]');await mp.locator('.pg.openable').last().click();await mp.waitForSelector('#bc');
+await mp.click('.qa [data-act=new]');await mp.fill('.dlg input','Mobil');await mp.click('.dlg [data-x="1"]');await mp.waitForSelector('.docv');await mp.click('[data-sa=addboard]');await mp.locator('.pg.openable').last().click();await mp.waitForSelector('#bc');
 const bb=await mp.locator('#bc').boundingBox();
 await mp.evaluate(()=>{const p=__board.page;p.objects.push({t:'stroke',id:'s1',pts:[[-100,-40],[-60,-80],[0,-20],[60,-70],[110,-30]],c:'#e03131',w:6,hl:false},{t:'rect',id:'r1',x1:-100,y1:20,x2:100,y2:100,c:'#1971c2',w:4},{t:'text',id:'t1',x:-80,y:40,tx:'Salom, doska!',s:30,c:'#111111'});__board.fit();});
 await mp.waitForTimeout(300);await mp.screenshot({path:SHOT+'/4-mobil-doska.png'});

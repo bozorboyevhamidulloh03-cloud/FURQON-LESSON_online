@@ -1,11 +1,11 @@
 const {chromium}=require('/opt/npm-tools/node_modules/playwright');
-const SHOT=process.argv[2]||'/home/claude/fur-platform/docs/shots8';require('fs').mkdirSync(SHOT,{recursive:true});
+const SHOT=process.argv[2]||'/home/claude/fur-holo/docs/shots8';require('fs').mkdirSync(SHOT,{recursive:true});
 let pass=0,fail=0;const ok=(n,c,x='')=>{c?pass++:fail++;console.log((c?'PASS ':'FAIL ')+n+(x?'  '+x:''));};
 (async()=>{
 const b=await chromium.launch();const ctx=await b.newContext({viewport:{width:1100,height:1300}});ctx.setDefaultTimeout(15000);
 const pg=await ctx.newPage();const errs=[];pg.on('pageerror',e=>errs.push(e.message));
 await pg.goto('http://localhost:8765/');await pg.waitForSelector('.empty');
-await pg.click('header [data-act=new]');await pg.fill('.dlg input','Rasm sinovi');await pg.click('.dlg [data-x="1"]');await pg.waitForSelector('.docv');
+await pg.click('.qa [data-act=new]');await pg.fill('.dlg input','Rasm sinovi');await pg.click('.dlg [data-x="1"]');await pg.waitForSelector('.docv');
 await pg.waitForSelector('.pcell');await pg.click('[data-sa=adddoc]');await pg.waitForTimeout(300);await pg.locator('.pcell.document').first().click();await pg.waitForSelector('#editor .ed');
 for(let k=0;k<6;k++){await pg.click('.ed >> nth=-1');await pg.keyboard.type('Bu uzun matn qator raqami '+k+'. Rasm shu matn bilan birga turishi kerak, shuning uchun biroz uzunroq yozamiz va davom etamiz.');await pg.keyboard.press('Enter');}
 await pg.setInputFiles('#eimg','/home/claude/fur/im-1.png');await pg.waitForSelector('.imgf');

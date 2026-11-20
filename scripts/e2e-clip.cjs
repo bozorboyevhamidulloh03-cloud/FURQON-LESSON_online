@@ -1,12 +1,12 @@
 const {chromium}=require('/opt/npm-tools/node_modules/playwright');
-const SHOT=process.argv[2]||'/home/claude/fur-platform/docs/shots8';require('fs').mkdirSync(SHOT,{recursive:true});
+const SHOT=process.argv[2]||'/home/claude/fur-holo/docs/shots8';require('fs').mkdirSync(SHOT,{recursive:true});
 let pass=0,fail=0;const ok=(n,c,x='')=>{c?pass++:fail++;console.log((c?'PASS ':'FAIL ')+n+(x?'  '+x:''));};
 (async()=>{
 const b=await chromium.launch();const ctx=await b.newContext({viewport:{width:1200,height:1000},permissions:['clipboard-read','clipboard-write']});ctx.setDefaultTimeout(12000);
 await ctx.addInitScript(()=>{try{localStorage.setItem('fur.pview','list')}catch{}});
 const pg=await ctx.newPage();const errs=[];pg.on('pageerror',e=>errs.push(e.message));
 await pg.goto('http://localhost:8765/');await pg.waitForSelector('.empty');
-await pg.click('header [data-act=new]');await pg.fill('.dlg input','Nusxa sinovi');await pg.click('.dlg [data-x="1"]');await pg.waitForSelector('.docv');
+await pg.click('.qa [data-act=new]');await pg.fill('.dlg input','Nusxa sinovi');await pg.click('.dlg [data-x="1"]');await pg.waitForSelector('.docv');
 await pg.click('[data-sa=adddoc]');await pg.waitForTimeout(200);await pg.click('[data-sa=adddoc]');await pg.waitForTimeout(200);
 await pg.evaluate(()=>{const d=__fur.S.ses.doc;const p=d.pages.filter(x=>x.type==='document')[0];p.blocks=[
  {id:'b1',type:'paragraph',runs:[{t:'Qizil qalin',c:'#e03131',b:true},{t:' va oddiy so‘z'}]},

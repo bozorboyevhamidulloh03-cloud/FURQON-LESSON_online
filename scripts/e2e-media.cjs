@@ -1,17 +1,17 @@
 const {chromium}=require('/opt/npm-tools/node_modules/playwright');const {spawn}=require('child_process');const fs=require('fs');
-const SHOT=process.argv[2]||'/home/claude/fur-platform/docs/shots8';fs.mkdirSync(SHOT,{recursive:true});
+const SHOT=process.argv[2]||'/home/claude/fur-holo/docs/shots8';fs.mkdirSync(SHOT,{recursive:true});
 let pass=0,fail=0;const ok=(n,c,x='')=>{c?pass++:fail++;console.log((c?'PASS ':'FAIL ')+n+(x?'  '+x:''));};
-const relay=spawn('node',['/home/claude/fur-platform/tools/fur-relay.cjs','18885'],{env:{...process.env,NODE_PATH:'/opt/npm-tools/node_modules'},stdio:'inherit'});
+const relay=spawn('node',['/home/claude/fur-holo/tools/fur-relay.cjs','18885'],{env:{...process.env,NODE_PATH:'/opt/npm-tools/node_modules'},stdio:'inherit'});
 const SRV='ws://localhost:18885';const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 (async()=>{await sleep(500);const b=await chromium.launch({args:['--use-fake-device-for-media-stream','--use-fake-ui-for-media-stream']});const errs=[];
 const mk=async(vp)=>{const c=await b.newContext({viewport:vp,permissions:['microphone','camera']});await c.addInitScript(()=>{try{localStorage.setItem('fur.pview','list')}catch{}});c.setDefaultTimeout(15000);const p=await c.newPage();p.on('pageerror',e=>errs.push(e.message));await p.goto('http://localhost:8765/');return p;};
 const T=await mk({width:1200,height:800});await T.waitForSelector('.empty');
-await T.click('header [data-act=new]');await T.fill('.dlg input','Ovoz');await T.click('.dlg [data-x="1"]');await T.waitForSelector('.docv');
+await T.click('.qa [data-act=new]');await T.fill('.dlg input','Ovoz');await T.click('.dlg [data-x="1"]');await T.waitForSelector('.docv');
 await T.click('[data-sa=live]');await T.waitForSelector('#srv');await T.fill('#srv',SRV);await T.click('.dlg [data-v=go]');await T.waitForSelector('#bcode');
 const code=(await T.locator('#bcode').innerText()).trim();
 const S=await mk({width:700,height:600});await S.waitForSelector('.empty');
 await S.click('[data-act=join]');await S.fill('#jc',code);await S.fill('#jn','Vali');await S.fill('#js',SRV);await S.click('.dlg [data-v=go]');await S.waitForSelector('.pres');
-await T.waitForSelector('#rost li .tb');ok('1: ro‘yxatda o‘quvchi va ruxsat tugmalari',true);
+await T.waitForSelector('#rost .rl .tg');ok('1: ro‘yxatda o‘quvchi va ruxsat tugmalari',true);
 // 2. ruxsatsiz o'quvchi mikrofon yoqa olmaydi
 ok('2: o‘quvchida mikrofon tugmasi bor',await S.locator('[data-p=mic]').count()===1);
 await S.click('[data-p=mic]');await S.waitForTimeout(400);
