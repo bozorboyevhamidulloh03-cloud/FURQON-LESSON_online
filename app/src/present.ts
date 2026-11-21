@@ -17,7 +17,7 @@ function runEl(r: Run): HTMLElement {
   if (r.b) st.fontWeight = '700'; if (r.i) st.fontStyle = 'italic';
   const dec = [r.u || r.href ? 'underline' : '', r.s ? 'line-through' : ''].filter(Boolean).join(' '); if (dec) st.textDecoration = dec;
   if (r.sup || r.sub) { st.verticalAlign = r.sup ? 'super' : 'sub'; st.fontSize = '0.75em'; }
-  if (r.c) st.color = r.c; if (r.fs) st.fontSize = r.fs + 'px'; if (r.ff) st.fontFamily = r.ff; if (r.href) st.color = r.c ?? '#2a6fdb';
+  if (r.c) st.color = r.c; if (r.hl) st.backgroundColor = r.hl; if (r.fs) st.fontSize = r.fs + 'px'; if (r.ff) st.fontFamily = r.ff; if (r.href) st.color = r.c ?? '#2a6fdb';
   st.whiteSpace = 'pre-wrap'; return s;
 }
 const fill = (el: HTMLElement, runs: Run[]) => { runs.forEach(r => el.appendChild(runEl(r))); return el; };
@@ -31,7 +31,7 @@ export function renderDoc(doc: FurDocument, page: FurPage, urls: string[], pageN
     if (b.type !== 'li') counters.fill(0);
     if (b.type === 'table') {
       const t = document.createElement('table'); t.className = 'pp-tbl';
-      b.rows.forEach((row, ri) => { const tr = t.insertRow(); row.forEach(c => { const td = document.createElement(b.header && ri === 0 ? 'th' : 'td'); fill(td, c); tr.appendChild(td); }); }); body.appendChild(t);
+      b.rows.forEach((row, ri) => { const tr = t.insertRow(); row.forEach((c, ci) => { const mg = b.merges?.find(m => ri >= m.r && ri < m.r + m.rs && ci >= m.c && ci < m.c + m.cs); if (mg && (mg.r !== ri || mg.c !== ci)) return; const td = document.createElement(b.header && ri === 0 ? 'th' : 'td'); if (mg) { if (mg.rs > 1) td.rowSpan = mg.rs; if (mg.cs > 1) td.colSpan = mg.cs; } const st = b.cs?.[ri + ',' + ci]; if (st?.a) td.style.textAlign = st.a; if (st?.bg) td.style.background = st.bg; fill(td, c); tr.appendChild(td); }); }); body.appendChild(t);
     } else if (b.type === 'image') {
       const a = doc.assets.find(x => x.id === b.a); if (!a) continue;
       const wr = b.wrap ?? 'block', abs = wr === 'behind' || wr === 'front'; const f = document.createElement('figure'); f.className = 'pp-img w-' + wr; f.style.textAlign = b.align;

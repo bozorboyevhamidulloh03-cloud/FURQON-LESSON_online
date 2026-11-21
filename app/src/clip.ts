@@ -13,14 +13,14 @@ export const blockText = (b: Block): string => isText(b) ? plainText(b.runs) : b
 export const fragText = (f: Frag): string => f.blocks.map(blockText).join('\n');
 const esc = (s: string) => s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!));
 function runHtml(r: Run): string {
-  const st = [r.b && 'font-weight:700', r.i && 'font-style:italic', (r.u || r.s) && 'text-decoration:' + [r.u && 'underline', r.s && 'line-through'].filter(Boolean).join(' '), r.c && 'color:' + r.c, r.fs && 'font-size:' + r.fs + 'px'].filter(Boolean).join(';');
+  const st = [r.b && 'font-weight:700', r.i && 'font-style:italic', (r.u || r.s) && 'text-decoration:' + [r.u && 'underline', r.s && 'line-through'].filter(Boolean).join(' '), r.c && 'color:' + r.c, r.hl && 'background-color:' + r.hl, r.fs && 'font-size:' + r.fs + 'px'].filter(Boolean).join(';');
   return `<span style="${st}">${esc(r.t).replace(/\n/g, '<br>')}</span>`;
 }
 /** Tashqi ilovalar (Word, Gmail) uchun HTML — rang va qalin saqlanadi. */
 export function fragHtml(f: Frag): string {
   return f.blocks.map(b => {
     if (isText(b)) { const t = b.type === 'heading' ? 'h' + (b.level ?? 1) : 'p'; return `<${t}>${b.runs.map(runHtml).join('')}</${t}>`; }
-    if (b.type === 'table') return `<table>${b.rows.map(r => `<tr>${r.map(c => `<td>${c.map(runHtml).join('')}</td>`).join('')}</tr>`).join('')}</table>`;
+    if (b.type === 'table') return `<table>${b.rows.map((r, ri) => `<tr>${r.map((c, ci) => { const mg = b.merges?.find(m => ri >= m.r && ri < m.r + m.rs && ci >= m.c && ci < m.c + m.cs); if (mg && (mg.r !== ri || mg.c !== ci)) return ''; const st = b.cs?.[ri + ',' + ci], sty = [st?.a && 'text-align:' + st.a, st?.bg && 'background:' + st.bg].filter(Boolean).join(';'); return `<td${mg && mg.rs > 1 ? ` rowspan="${mg.rs}"` : ''}${mg && mg.cs > 1 ? ` colspan="${mg.cs}"` : ''}${sty ? ` style="${sty}"` : ''}>${c.map(runHtml).join('')}</td>`; }).join('')}</tr>`).join('')}</table>`;
     return `<p>[rasm]</p>`;
   }).join('');
 }

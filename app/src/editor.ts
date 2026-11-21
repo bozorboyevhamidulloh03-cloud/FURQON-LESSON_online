@@ -1,14 +1,25 @@
 import { Frag, cloneFrag, collectAssets, ensureAssets, fragHtml, fragText, getClip, setClip, sliceRuns, toBoardObjects, blockText } from './clip';
 import { croppedEl, cropDialog } from './imgcrop';
-import { Align, Block, FurDocument, FurPage, ImageBlock, ImageWrap, Run, TableBlock, TextBlock, allHave, normalizeRuns, patchRuns, plainText, replaceRange, runsLength, setFlag, splitRuns, uid } from '../../packages/fur-format/src/index';
+import { Align, Block, CellStyle, FurDocument, FurPage, ImageBlock, ImageWrap, Run, TableBlock, TextBlock, allHave, normalizeRuns, patchRuns, plainText, replaceRange, runsLength, setFlag, splitRuns, uid } from '../../packages/fur-format/src/index';
 
 export interface EditorHost { doc: FurDocument; page: FurPage; index: number; onChange(): void; focus?(u: number, v: number): void; toast(m: string, bad?: boolean): void; ask(t: string, v?: string, ok?: string): Promise<string | null> }
 export interface EditorHandle { destroy(): void }
 type Flag = 'b' | 'i' | 'u' | 's' | 'sup' | 'sub';
 interface SavedSel { ak: string; ao: number; bk: string; bo: number }
 
-const FONTS: [string, string][] = [['Standart', ''], ['Serif', 'Georgia, serif'], ['Mono', 'ui-monospace, Menlo, Consolas, monospace']];
-const SIZES = [12, 14, 16, 18, 20, 24, 28, 32, 40];
+const FONTS: [string, string][] = [['Standart', ''], ['Arial', 'Arial, Helvetica, sans-serif'], ['Serif', 'Georgia, serif'], ['Times', '"Times New Roman", Times, serif'], ['Mono', 'ui-monospace, Menlo, Consolas, monospace'], ['Qo‘lyozma', '"Comic Sans MS", cursive']];
+const SIZES = [10, 12, 14, 16, 18, 20, 24, 28, 32, 40, 48, 64];
+/** Rang palitrasi (Word kabi: ustun = rang, qator = to‘qlik). */
+const PAL: string[][] = [
+  ['#f1f3f5', '#ffc9c9', '#fcc2d7', '#eebefa', '#bac8ff', '#a5d8ff', '#99e9f2', '#b2f2bb', '#ffec99', '#ffd8a8'],
+  ['#ced4da', '#ff8787', '#f783ac', '#da77f2', '#748ffc', '#4dabf7', '#3bc9db', '#69db7c', '#ffd43b', '#ffa94d'],
+  ['#868e96', '#fa5252', '#e64980', '#be4bdb', '#4c6ef5', '#228be6', '#15aabf', '#40c057', '#fab005', '#fd7e14'],
+  ['#495057', '#e03131', '#c2255c', '#9c36b5', '#3b5bdb', '#1971c2', '#0c8599', '#2f9e44', '#f08c00', '#e8590c'],
+  ['#000000', '#c92a2a', '#a61e4d', '#862e9c', '#364fc7', '#1864ab', '#0b7285', '#2b8a3e', '#e67700', '#d9480f']
+];
+const HEX = /^#[0-9a-fA-F]{6}$/;
+const lsGet = (k: string): string | null => { try { return localStorage.getItem(k); } catch { return null; } };
+const lsSet = (k: string, v: string) => { try { localStorage.setItem(k, v); } catch { /* */ } };
 const MARGIN = { narrow: 36, normal: 64, wide: 96 };
 const ico = (d: string) => `<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
 const AL: Record<Align, string> = { left: ico('<path d="M4 6h16M4 10h10M4 14h16M4 18h10"/>'), center: ico('<path d="M4 6h16M7 10h10M4 14h16M7 18h10"/>'), right: ico('<path d="M4 6h16M10 10h10M4 14h16M10 18h10"/>'), justify: ico('<path d="M4 6h16M4 10h16M4 14h16M4 18h16"/>') };
@@ -24,7 +35,7 @@ function renderRuns(el: HTMLElement, runs: Run[]) {
     if (r.href) { (n as HTMLAnchorElement).href = r.href; (n as HTMLAnchorElement).target = '_blank'; (n as HTMLAnchorElement).rel = 'noopener noreferrer'; }
     if (r.b) n.style.fontWeight = '700'; if (r.i) n.style.fontStyle = 'italic';
     const dec = [r.u && 'underline', r.s && 'line-through'].filter(Boolean).join(' '); if (dec) n.style.textDecoration = dec;
-    if (r.c) n.style.color = r.c; if (r.fs) n.style.fontSize = r.fs + 'px'; if (r.ff) n.style.fontFamily = r.ff;
+    if (r.c) n.style.color = r.c; if (r.hl) n.style.backgroundColor = r.hl; if (r.fs) n.style.fontSize = r.fs + 'px'; if (r.ff) n.style.fontFamily = r.ff;
     if (r.sup || r.sub) { n.style.verticalAlign = r.sup ? 'super' : 'sub'; n.style.fontSize = r.fs ? r.fs * 0.75 + 'px' : '0.75em'; }
     el.append(n);
   }
@@ -56,10 +67,10 @@ export function mountEditor(root: HTMLElement, h: EditorHost): EditorHandle {
   // ---- toolbar ----
   const btn = (cmd: string, label: string, title: string, extra = '') => `<button class="tb ${extra}" data-cmd="${cmd}" title="${title}" aria-label="${title}">${label}</button>`;
   tools.innerHTML = `<select id="tblock" aria-label="Blok turi"><option value="p">Oddiy matn</option><option value="h1">Sarlavha 1</option><option value="h2">Sarlavha 2</option><option value="h3">Sarlavha 3</option></select>
-  <select id="tfont" aria-label="Shrift">${FONTS.map(([n, v]) => `<option value="${esc(v)}">${n}</option>`).join('')}</select>
-  <select id="tsize" aria-label="O‘lcham"><option value="">Avto</option>${SIZES.map(s => `<option value="${s}">${s}</option>`).join('')}</select><span class="tsep"></span>
+  <select id="tfont" aria-label="Shrift"><option value="__m" hidden disabled></option>${FONTS.map(([n, v]) => `<option value="${esc(v)}">${n}</option>`).join('')}</select>
+  <select id="tsize" aria-label="O‘lcham"><option value="__m" hidden disabled></option><option value="">Avto</option>${SIZES.map(s => `<option value="${s}">${s}</option>`).join('')}</select><span class="tsep"></span>
   ${btn('b', '<b>B</b>', 'Qalin (Ctrl+B)')}${btn('i', '<i>I</i>', 'Qiya (Ctrl+I)')}${btn('u', '<u>U</u>', 'Tagiga chizilgan (Ctrl+U)')}${btn('s', '<s>S</s>', 'Chizilgan')}${btn('sup', 'x<sup>2</sup>', 'Yuqori indeks')}${btn('sub', 'x<sub>2</sub>', 'Quyi indeks')}
-  <label class="tb colr" title="Matn rangi"><span>A</span><input type="color" id="tcolor" value="#e03131"></label>${btn('link', ico('<path d="M10 14a4 4 0 005.7 0l3-3a4 4 0 00-5.7-5.7l-1 1M14 10a4 4 0 00-5.7 0l-3 3a4 4 0 005.7 5.7l1-1"/>'), 'Havola')}<span class="tsep"></span>
+  ${btn('fs-', '<span class="fsm">A<small>−</small></span>', 'Shriftni kichraytirish')}${btn('fs+', '<span class="fsm">A<small>+</small></span>', 'Shriftni kattalashtirish')}<span class="cbtn">${btn('color', '<span class="cA" id="cAbar">A</span>', 'Matn rangi: oxirgi tanlangan rangni qo‘llash', 'colr')}${btn('color-menu', '▾', 'Matn rangini tanlash', 'cdrop')}</span><span class="cbtn">${btn('hl', '<span class="cA hlA" id="cHbar">ab</span>', 'Matnni bo‘yash (marker): oxirgi rangni qo‘llash', 'colr')}${btn('hl-menu', '▾', 'Marker rangini tanlash', 'cdrop')}</span>${btn('clear', '<span class="fsm">T<small>×</small></span>', 'Formatni tozalash')}<input type="color" id="tcolor" value="#e03131" hidden><input type="color" id="thl" value="#ffec99" hidden>${btn('link', ico('<path d="M10 14a4 4 0 005.7 0l3-3a4 4 0 00-5.7-5.7l-1 1M14 10a4 4 0 00-5.7 0l-3 3a4 4 0 005.7 5.7l1-1"/>'), 'Havola')}<span class="tsep"></span>
   ${(['left', 'center', 'right', 'justify'] as Align[]).map(a => btn('al-' + a, AL[a], 'Tekislash: ' + a)).join('')}<span class="tsep"></span>
   ${btn('bullet', ico('<circle cx="5" cy="7" r="1"/><circle cx="5" cy="12" r="1"/><circle cx="5" cy="17" r="1"/><path d="M10 7h10M10 12h10M10 17h10"/>'), 'Markerli ro‘yxat')}${btn('ordered', ico('<path d="M10 7h10M10 12h10M10 17h10M4 6h1v4M4 14h2l-2 3h2"/>'), 'Raqamli ro‘yxat')}${btn('outdent', ico('<path d="M10 6h10M10 12h10M10 18h10M7 9l-3 3 3 3"/>'), 'Chekinishni kamaytirish')}${btn('indent', ico('<path d="M10 6h10M10 12h10M10 18h10M4 9l3 3-3 3"/>'), 'Chekinishni oshirish')}<span class="tsep"></span>
   ${btn('table', ico('<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18M3 15h18M9 4v16M15 4v16"/>'), 'Jadval qo‘shish')}${btn('image', ico('<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="M4 18l5-5 4 4 3-3 4 4"/>'), 'Rasm qo‘shish')}<span class="tsep"></span>
@@ -89,7 +100,7 @@ export function mountEditor(root: HTMLElement, h: EditorHost): EditorHandle {
   }
   const findEd = (k: string) => eds().find(e => keyOf(e) === k) ?? null;
   function restoreSel(s: SavedSel | null) {
-    if (!s || selMode) return; const a = findEd(s.ak), b = findEd(s.bk); if (!a || !b) return;
+    if (!s || selMode) return; const a = findEd(liveKey(s.ak)), b = findEd(liveKey(s.bk)); if (!a || !b) return;
     const [an, ao] = locate(a, s.ao), [bn, bo] = locate(b, s.bo), r = document.createRange(); r.setStart(an, ao); r.setEnd(bn, bo);
     const g = getSelection()!; g.removeAllRanges(); g.addRange(r);
   }
@@ -123,7 +134,7 @@ export function mountEditor(root: HTMLElement, h: EditorHost): EditorHandle {
         } else body.append(el);
       } else if (b.type === 'table') {
         const w = document.createElement('div'); w.className = 'tblw'; const t = document.createElement('table'); t.dataset.bid = b.id;
-        b.rows.forEach((row, r) => { const tr = document.createElement('tr'); row.forEach((cell, c) => { const td = document.createElement(b.header && r === 0 ? 'th' : 'td'); mkEd(td, 'cell', b.id, cell); td.dataset.r = String(r); td.dataset.c = String(c); tr.append(td); }); t.append(tr); });
+        b.rows.forEach((row, r) => { const tr = document.createElement('tr'); row.forEach((cell, c) => { if (isCovered(b, r, c)) return; const td = document.createElement(b.header && r === 0 ? 'th' : 'td'); mkEd(td, 'cell', b.id, cell); td.dataset.r = String(r); td.dataset.c = String(c); const m = b.merges?.find(q => q.r === r && q.c === c); if (m) { if (m.rs > 1) td.rowSpan = m.rs; if (m.cs > 1) td.colSpan = m.cs; } const st = b.cs?.[ckey(r, c)]; if (st?.a) td.style.textAlign = st.a; if (st?.bg) td.style.background = st.bg; tr.append(td); }); t.append(tr); });
         w.append(t); body.append(w);
       } else {
         const wr = b.wrap ?? 'block', abs = wr === 'behind' || wr === 'front';
@@ -148,7 +159,14 @@ export function mountEditor(root: HTMLElement, h: EditorHost): EditorHandle {
   function mutate(fn: () => void) { checkpoint(); const ss = saveSel() ?? last; fn(); renderAll(); restoreSel(ss); done(); }
   function selectedEds(): HTMLElement[] { const ss = saveSel() ?? last; if (!ss) return []; const l = eds(), a = l.findIndex(e => keyOf(e) === ss.ak), b = l.findIndex(e => keyOf(e) === ss.bk); return a < 0 || b < 0 ? [] : l.slice(Math.min(a, b), Math.max(a, b) + 1); }
   function selectedTextBlocks(): TextBlock[] { const seen = new Set<string>(), out: TextBlock[] = []; for (const e of selectedEds()) { const b = find(e.dataset.bid!); if (e.dataset.k === 'blk' && isText(b) && !seen.has(b.id)) { seen.add(b.id); out.push(b); } } return out; }
+  function inlineCells(R: Rect, fn: (runs: Run[], s: number, e: number) => Run[]) {
+    const cells = cellsIn(R).filter(x => runsLength(R.b.rows[x.r][x.c]) > 0); if (!cells.length) return h.toast('Belgilangan kataklarda matn yo‘q');
+    const ss = saveSel() ?? last; checkpoint();
+    for (const { r, c } of cells) { const runs = R.b.rows[r][c]; R.b.rows[r][c] = fn(runs, 0, runsLength(runs)); const el = findEd(`cell:${R.b.id}:${r}:${c}`); if (el) renderRuns(el, R.b.rows[r][c]); }
+    restoreSel(ss); done();
+  }
   function inline(fn: (runs: Run[], s: number, e: number) => Run[], needSel = true) {
+    const R = cellRect(); if (R) return inlineCells(R, fn);
     const ss = saveSel() ?? last; if (!ss) return; const list = eds(), ia = list.findIndex(e => keyOf(e) === ss.ak), ib = list.findIndex(e => keyOf(e) === ss.bk);
     if (ia < 0 || ib < 0) return; if (needSel && ia === ib && ss.ao === ss.bo) return h.toast('Avval matnni belgilang');
     checkpoint();
@@ -156,6 +174,7 @@ export function mountEditor(root: HTMLElement, h: EditorHost): EditorHandle {
     restoreSel(ss); done();
   }
   function toggle(k: Flag) {
+    const R = cellRect(); if (R) { const all = cellsIn(R).filter(x => runsLength(R.b.rows[x.r][x.c]) > 0).every(x => { const rs = R.b.rows[x.r][x.c]; return allHave(rs, 0, runsLength(rs), k); }); return inlineCells(R, (r, s, e) => patchRuns(r, s, e, x => setFlag(x, k, !all))); }
     const ss = saveSel() ?? last; if (!ss) return; const list = eds(), ia = list.findIndex(e => keyOf(e) === ss.ak), ib = list.findIndex(e => keyOf(e) === ss.bk); if (ia < 0 || ib < 0) return;
     let all = true; for (let i = ia; i <= ib; i++) { const runs = getRuns(list[i]), s = i === ia ? ss.ao : 0, e = i === ib ? ss.bo : runsLength(runs); if (e > s && !allHave(runs, s, e, k)) all = false; }
     inline((r, s, e) => patchRuns(r, s, e, x => setFlag(x, k, !all)));
@@ -167,7 +186,120 @@ export function mountEditor(root: HTMLElement, h: EditorHost): EditorHandle {
   }
   function blockStyle(v: string) { setBlocks(b => { delete b.list; delete b.indent; if (v === 'p') { b.type = 'paragraph'; delete b.level; } else { b.type = 'heading'; b.level = Number(v[1]) as 1 | 2 | 3; } }); }
   function curCell(): { b: TableBlock; r: number; c: number } | null { const s = saveSel() ?? last; const el = s ? findEd(s.ak) : null; if (!el || el.dataset.k !== 'cell') return null; const b = find(el.dataset.bid!); return b?.type === 'table' ? { b, r: +el.dataset.r!, c: +el.dataset.c! } : null; }
+  const keyOf0 = (c: { b: TableBlock; r: number; c: number }) => `cell:${c.b.id}:${c.r}:${c.c}`;
   const emptyRow = (n: number): Run[][] => Array.from({ length: n }, () => [] as Run[]);
+
+  // ---- jadval: birlashtirish, katak uslubi, to'rtburchak (Excel kabi) belgilash ----
+  const tblOf = (id: string): TableBlock | undefined => { const b = find(id); return b?.type === 'table' ? b : undefined; };
+  const mergeOf = (b: TableBlock, r: number, c: number) => b.merges?.find(m => r >= m.r && r < m.r + m.rs && c >= m.c && c < m.c + m.cs);
+  const isCovered = (b: TableBlock, r: number, c: number) => { const m = mergeOf(b, r, c); return !!m && (m.r !== r || m.c !== c); };
+  const ckey = (r: number, c: number) => r + ',' + c;
+  const cellStyle = (b: TableBlock, r: number, c: number): CellStyle => b.cs?.[ckey(r, c)] ?? {};
+  function liveKey(k: string): string {
+    if (!k.startsWith('cell:')) return k; const [, bid, r, c] = k.split(':'), b = tblOf(bid); if (!b) return k;
+    const m = mergeOf(b, +r, +c); return m && (m.r !== +r || m.c !== +c) ? `cell:${bid}:${m.r}:${m.c}` : k;
+  }
+  function setCS(b: TableBlock, r: number, c: number, p: { a?: Align | null; bg?: string | null }) {
+    const k = ckey(r, c), cur: CellStyle = { ...(b.cs?.[k] ?? {}) };
+    if ('a' in p) { if (p.a && p.a !== 'left') cur.a = p.a; else delete cur.a; }
+    if ('bg' in p) { if (p.bg) cur.bg = p.bg; else delete cur.bg; }
+    if (cur.a || cur.bg) (b.cs ??= {})[k] = cur; else if (b.cs) { delete b.cs[k]; if (!Object.keys(b.cs).length) delete b.cs; }
+  }
+  interface Rect { b: TableBlock; r1: number; c1: number; r2: number; c2: number }
+  function grow(q: Rect): Rect { // to'rtburchak birlashtirilgan katakni kesib o'tmasin
+    let ch = true;
+    while (ch) { ch = false; for (const m of q.b.merges ?? []) { if (m.r > q.r2 || m.r + m.rs - 1 < q.r1 || m.c > q.c2 || m.c + m.cs - 1 < q.c1) continue; const n = { r1: Math.min(q.r1, m.r), c1: Math.min(q.c1, m.c), r2: Math.max(q.r2, m.r + m.rs - 1), c2: Math.max(q.c2, m.c + m.cs - 1) }; if (n.r1 !== q.r1 || n.c1 !== q.c1 || n.r2 !== q.r2 || n.c2 !== q.c2) { q = { b: q.b, ...n }; ch = true; } } }
+    return q;
+  }
+  /** Belgilash ikki chetidagi kataklar turli bo'lsa — ular hosil qilgan to'rtburchak (butun kataklar). */
+  function cellRect(): Rect | null {
+    if (selMode) return null; const s = saveSel() ?? last; if (!s || s.ak === s.bk) return null;
+    const a = findEd(liveKey(s.ak)), z = findEd(liveKey(s.bk)); if (!a || !z || a.dataset.k !== 'cell' || z.dataset.k !== 'cell' || a.dataset.bid !== z.dataset.bid) return null;
+    const b = tblOf(a.dataset.bid!); if (!b) return null; const ar = +a.dataset.r!, ac = +a.dataset.c!, zr = +z.dataset.r!, zc = +z.dataset.c!, am = mergeOf(b, ar, ac), zm = mergeOf(b, zr, zc);
+    return grow({ b, r1: Math.min(ar, zr), c1: Math.min(ac, zc), r2: Math.max(ar + (am?.rs ?? 1) - 1, zr + (zm?.rs ?? 1) - 1), c2: Math.max(ac + (am?.cs ?? 1) - 1, zc + (zm?.cs ?? 1) - 1) });
+  }
+  const cellsIn = (q: Rect) => { const o: { r: number; c: number }[] = []; for (let r = q.r1; r <= q.r2; r++) for (let c = q.c1; c <= q.c2; c++) if (!isCovered(q.b, r, c)) o.push({ r, c }); return o; };
+  function oneRect(c: { b: TableBlock; r: number; c: number }): Rect { const m = mergeOf(c.b, c.r, c.c); return { b: c.b, r1: c.r, c1: c.c, r2: c.r + (m?.rs ?? 1) - 1, c2: c.c + (m?.cs ?? 1) - 1 }; }
+  function shiftTable(b: TableBlock, kind: 'row' | 'col', at: number, d: 1 | -1) {
+    const ax = kind === 'row' ? 'r' : 'c', sz = kind === 'row' ? 'rs' : 'cs';
+    if (b.merges) {
+      const out = [];
+      for (const m of b.merges) { const n = { ...m }, st = n[ax], en = st + n[sz] - 1; if (d > 0) { if (st >= at) n[ax] = st + 1; else if (en >= at) n[sz]++; } else { if (st > at) n[ax] = st - 1; else if (en >= at) n[sz]--; } if (n[sz] >= 1 && n.rs * n.cs > 1) out.push(n); }
+      if (out.length) b.merges = out; else delete b.merges;
+    }
+    if (b.cs) {
+      const nc: Record<string, CellStyle> = {};
+      for (const [k, v] of Object.entries(b.cs)) { const [r, c] = k.split(',').map(Number); let x = kind === 'row' ? r : c; if (d > 0) { if (x >= at) x++; } else { if (x === at) continue; if (x > at) x--; } nc[kind === 'row' ? ckey(x, c) : ckey(r, x)] = v; }
+      if (Object.keys(nc).length) b.cs = nc; else delete b.cs;
+    }
+  }
+  const addRowAt = (b: TableBlock, at: number) => { b.rows.splice(at, 0, emptyRow(b.rows[0].length)); shiftTable(b, 'row', at, 1); };
+  const addColAt = (b: TableBlock, at: number) => { b.rows.forEach(r => r.splice(at, 0, [])); shiftTable(b, 'col', at, 1); };
+  const delRowAt = (b: TableBlock, at: number) => { b.rows.splice(at, 1); shiftTable(b, 'row', at, -1); };
+  const delColAt = (b: TableBlock, at: number) => { b.rows.forEach(r => r.splice(at, 1)); shiftTable(b, 'col', at, -1); };
+  function mergeRect(q: Rect) {
+    const b = q.b, cells = cellsIn(q), all: Run[] = [];
+    for (const { r, c } of cells) { const runs = b.rows[r][c]; if (runs.length) { if (all.length) all.push({ t: ' ' }); all.push(...runs); } }
+    for (const { r, c } of cells) b.rows[r][c] = [];
+    b.rows[q.r1][q.c1] = normalizeRuns(all);
+    b.merges = (b.merges ?? []).filter(m => !(m.r >= q.r1 && m.r <= q.r2 && m.c >= q.c1 && m.c <= q.c2)); b.merges.push({ r: q.r1, c: q.c1, rs: q.r2 - q.r1 + 1, cs: q.c2 - q.c1 + 1 });
+  }
+  function unmergeRect(q: Rect) { if (!q.b.merges) return; q.b.merges = q.b.merges.filter(m => m.r > q.r2 || m.r + m.rs - 1 < q.r1 || m.c > q.c2 || m.c + m.cs - 1 < q.c1); if (!q.b.merges.length) delete q.b.merges; }
+  function selectSpan(b: TableBlock, r1: number, c1: number, r2: number, c2: number) {
+    const a = findEd(liveKey(`cell:${b.id}:${r1}:${c1}`)), z = findEd(liveKey(`cell:${b.id}:${r2}:${c2}`)); if (!a || !z) return;
+    a.focus({ preventScroll: true }); const [an, ao] = locate(a, 0), [zn, zo] = locate(z, 1e9); getSelection()!.setBaseAndExtent(an, ao, zn, zo); updateState();
+  }
+  const fragFromRect = (q: Rect): Frag => {
+    const rows = []; for (let r = q.r1; r <= q.r2; r++) rows.push(q.b.rows[r].slice(q.c1, q.c2 + 1).map(c => JSON.parse(JSON.stringify(c)) as Run[]));
+    const tb: TableBlock = { id: uid('b'), type: 'table', header: false, rows };
+    const ms = (q.b.merges ?? []).filter(m => m.r >= q.r1 && m.c >= q.c1 && m.r + m.rs - 1 <= q.r2 && m.c + m.cs - 1 <= q.c2).map(m => ({ ...m, r: m.r - q.r1, c: m.c - q.c1 })); if (ms.length) tb.merges = ms;
+    const cs: Record<string, CellStyle> = {}; for (const [k, v] of Object.entries(q.b.cs ?? {})) { const [r, c] = k.split(',').map(Number); if (r >= q.r1 && r <= q.r2 && c >= q.c1 && c <= q.c2) cs[ckey(r - q.r1, c - q.c1)] = { ...v }; } if (Object.keys(cs).length) tb.cs = cs;
+    return { blocks: [tb], startPartial: false, endPartial: false, assets: [] };
+  };
+  function setAlign(a: Align) {
+    const ib = selImg ? find(selImg) : undefined; if (ib?.type === 'image') return mutate(() => { ib.align = a; });
+    const R = cellRect(), texts = selectedTextBlocks();
+    const cells: { b: TableBlock; r: number; c: number }[] = R ? cellsIn(R).map(x => ({ b: R.b, ...x })) : (() => { const seen = new Set<string>(), o: { b: TableBlock; r: number; c: number }[] = []; for (const e of selectedEds()) { if (e.dataset.k !== 'cell') continue; const b = tblOf(e.dataset.bid!); if (!b) continue; const k = keyOf(e); if (!seen.has(k)) { seen.add(k); o.push({ b, r: +e.dataset.r!, c: +e.dataset.c! }); } } return o; })();
+    if (!texts.length && !cells.length) return;
+    mutate(() => { texts.forEach(b => { if (a === 'left') delete b.align; else b.align = a; }); cells.forEach(x => setCS(x.b, x.r, x.c, { a })); });
+  }
+  const lastC: { c: string; hl: string; bg: string } = { c: lsGet('fur.col.c') || '#e03131', hl: lsGet('fur.col.hl') || '#ffec99', bg: lsGet('fur.col.bg') || '#fff3bf' };
+  let recent: string[] = []; try { recent = (JSON.parse(lsGet('fur.col.recent') || '[]') as unknown[]).filter((x): x is string => typeof x === 'string' && HEX.test(x)).slice(0, 10); } catch { /* */ }
+  const paintBars = () => { tools.style.setProperty('--cbar', lastC.c); tools.style.setProperty('--hbar', lastC.hl); };
+  function applyCellBg(v: string | null) {
+    const R = cellRect(), c = curCell(), cells = R ? cellsIn(R).map(x => ({ b: R.b, ...x })) : c ? [{ b: c.b, r: c.r, c: c.c }] : []; if (!cells.length) return h.toast('Avval katakni tanlang');
+    if (v) { lastC.bg = v; lsSet('fur.col.bg', v); } mutate(() => cells.forEach(x => setCS(x.b, x.r, x.c, { bg: v })));
+  }
+  function applyColor(kind: 'c' | 'hl' | 'bg', v: string | null) {
+    if (kind === 'bg') return applyCellBg(v);
+    if (v) { lastC[kind] = v; lsSet('fur.col.' + kind, v); recent = [v, ...recent.filter(x => x !== v)].slice(0, 10); lsSet('fur.col.recent', JSON.stringify(recent)); paintBars(); }
+    inline((r, s, e) => patchRuns(r, s, e, x => { const y = { ...x }; if (v) y[kind] = v; else delete y[kind]; return y; }));
+  }
+  function stepSize(dir: 1 | -1) {
+    const next = (cur: number) => dir > 0 ? (SIZES.find(x => x > cur) ?? SIZES[SIZES.length - 1]) : ([...SIZES].reverse().find(x => x < cur) ?? SIZES[0]);
+    inline((r, s, e) => patchRuns(r, s, e, x => ({ ...x, fs: next(x.fs ?? 16) })));
+  }
+  const clearFmt = () => inline((r, s, e) => patchRuns(r, s, e, x => (x.href ? { t: x.t, href: x.href } : { t: x.t })));
+  let pop: HTMLElement | null = null, nativeKind: 'hl' | 'bg' = 'hl';
+  const closePop = () => { pop?.remove(); pop = null; document.removeEventListener('pointerdown', popOut, true); document.removeEventListener('keydown', popKey, true); };
+  const popOut = (e: Event) => { const t = e.target as HTMLElement; if (pop && !pop.contains(t) && !t.closest?.('.cdrop,[data-x=cbg]')) closePop(); };
+  const popKey = (e: KeyboardEvent) => { if (e.key === 'Escape') closePop(); };
+  function openPalette(kind: 'c' | 'hl' | 'bg', anchor: HTMLElement) {
+    const same = pop?.dataset.kind === kind; closePop(); if (same) return;
+    const sw = (c: string) => `<button class="sw2" data-col="${c}" style="background:${c}" title="${c}" aria-label="${c}"></button>`;
+    pop = document.createElement('div'); pop.className = 'cpop'; pop.dataset.kind = kind;
+    pop.innerHTML = `<div class="pt">${kind === 'c' ? 'Matn rangi' : kind === 'hl' ? 'Marker (matn foni)' : 'Katak foni'}</div><button class="pnone" data-col="">${kind === 'c' ? 'Avtomatik (rangsiz)' : 'Rangsiz'}</button><div class="pgrid">${PAL.flat().map(sw).join('')}</div>${recent.length ? `<div class="pl">Oxirgi ishlatilganlar</div><div class="prow">${recent.map(sw).join('')}</div>` : ''}<div class="pcus"><input class="txt hex" maxlength="7" placeholder="#RRGGBB" aria-label="Rang kodi"><button class="btn" data-hex>OK</button><button class="btn" data-nat>Boshqa…</button></div>`;
+    pop.addEventListener('mousedown', e => { if (!(e.target as HTMLElement).closest('input')) e.preventDefault(); });
+    pop.addEventListener('click', e => {
+      const t = e.target as HTMLElement, sb = t.closest<HTMLElement>('[data-col]');
+      if (sb) { const v = sb.dataset.col || null; closePop(); return applyColor(kind, v); }
+      if (t.closest('[data-hex]')) { let v = pop!.querySelector<HTMLInputElement>('.hex')!.value.trim(); if (v && v[0] !== '#') v = '#' + v; if (!HEX.test(v)) return h.toast('Rang kodi #RRGGBB ko‘rinishida bo‘lsin (masalan #e03131)', true); closePop(); return applyColor(kind, v.toLowerCase()); }
+      if (t.closest('[data-nat]')) { closePop(); const inp = kind === 'c' ? $<HTMLInputElement>('tcolor') : $<HTMLInputElement>('thl'); nativeKind = kind === 'bg' ? 'bg' : 'hl'; inp.value = '#010101'; inp.click(); }
+    });
+    document.body.append(pop); const r = anchor.getBoundingClientRect(), w = pop.offsetWidth, ph = pop.offsetHeight;
+    pop.style.left = Math.max(8, Math.min(innerWidth - w - 8, r.left)) + 'px'; pop.style.top = (r.bottom + 6 + ph > innerHeight && r.top - 6 - ph > 8 ? r.top - 6 - ph : Math.max(8, r.bottom + 6)) + 'px';
+    document.addEventListener('pointerdown', popOut, true); document.addEventListener('keydown', popKey, true);
+  }
   function insertAfterCurrent(nb: Block) {
     const ss = saveSel() ?? last, el = ss ? findEd(ss.ak) : null, i = el ? blocks.findIndex(b => b.id === el.dataset.bid) : blocks.length - 1;
     checkpoint(); blocks.splice(i + 1, 0, nb); renderAll(); done();
@@ -238,6 +370,10 @@ export function mountEditor(root: HTMLElement, h: EditorHost): EditorHandle {
   body.addEventListener('keydown', e => {
     const ctrl = e.ctrlKey || e.metaKey, k = e.key.toLowerCase(), el = edOf(e.target as Node);
     if (ctrl && (k === 'b' || k === 'i' || k === 'u')) { e.preventDefault(); return toggle(k as Flag); }
+    if (ctrl && !e.shiftKey && !e.altKey && (k === 'l' || k === 'e' || k === 'r' || k === 'j')) { e.preventDefault(); return setAlign(({ l: 'left', e: 'center', r: 'right', j: 'justify' } as const)[k]); }
+    if (ctrl && !e.shiftKey && k === 'k') { e.preventDefault(); return void makeLink(); }
+    if ((e.key === 'Delete' || e.key === 'Backspace') && !selMode && cellRect()) { e.preventDefault(); return deleteSource(); }
+    if (e.key === 'Escape' && !selMode && cellRect()) { e.preventDefault(); const g = saveSel(); if (g) caret(findEd(liveKey(g.ak)), g.ao); return; }
     if (ctrl && k === 'a' && !selMode) { e.preventDefault(); return selectAllText(); }
     if (!el) { if (selImg && (e.key === 'Delete' || e.key === 'Backspace')) { e.preventDefault(); delBlock(selImg); } return; }
     const b = el.dataset.k === 'blk' ? find(el.dataset.bid!) : undefined, blk = isText(b) ? b : undefined;
@@ -246,7 +382,7 @@ export function mountEditor(root: HTMLElement, h: EditorHost): EditorHandle {
     else if (e.key === 'Tab') {
       e.preventDefault();
       if (blk?.type === 'li') { blk.indent = Math.max(0, Math.min(3, (blk.indent ?? 0) + (e.shiftKey ? -1 : 1))); mutate(() => {}); }
-      else if (el.dataset.k === 'cell') { const c = curCell(); if (!c) return; const cols = c.b.rows[0].length; let r = c.r, cc = c.c + (e.shiftKey ? -1 : 1); if (cc >= cols) { cc = 0; r++; } if (cc < 0) { cc = cols - 1; r--; } if (r >= c.b.rows.length) { checkpoint(); c.b.rows.push(emptyRow(cols)); renderAll(); done(); } if (r >= 0) caret(findEd(`cell:${c.b.id}:${r}:${cc}`), 0); }
+      else if (el.dataset.k === 'cell') { const c = curCell(); if (!c) return; const cols = c.b.rows[0].length, dir = e.shiftKey ? -1 : 1; let r = c.r, cc = c.c; for (let guard = 0; guard < 4000; guard++) { cc += dir; if (cc >= cols) { cc = 0; r++; } if (cc < 0) { cc = cols - 1; r--; } if (r < 0 || r >= c.b.rows.length || !isCovered(c.b, r, cc)) break; } if (r >= c.b.rows.length) { checkpoint(); c.b.rows.push(emptyRow(cols)); renderAll(); done(); } if (r >= 0) caret(findEd(`cell:${c.b.id}:${r}:${cc}`), 0); }
     }
   });
   const onDocKey = (e: KeyboardEvent) => {
@@ -303,16 +439,20 @@ export function mountEditor(root: HTMLElement, h: EditorHost): EditorHandle {
   tools.addEventListener('click', e => {
     const bt = (e.target as HTMLElement).closest<HTMLElement>('[data-cmd]'); if (!bt) return; const c = bt.dataset.cmd!;
     if (c === 'b' || c === 'i' || c === 'u' || c === 's' || c === 'sup' || c === 'sub') toggle(c);
-    else if (c.startsWith('al-')) { const a = c.slice(3) as Align; const ib = selImg ? find(selImg) : undefined; if (ib?.type === 'image') mutate(() => { ib.align = a; }); else setBlocks(b => { if (a === 'left') delete b.align; else b.align = a; }); }
+    else if (c.startsWith('al-')) setAlign(c.slice(3) as Align);
+    else if (c === 'fs+' || c === 'fs-') stepSize(c === 'fs+' ? 1 : -1); else if (c === 'clear') clearFmt();
+    else if (c === 'color') applyColor('c', lastC.c); else if (c === 'hl') applyColor('hl', lastC.hl); else if (c === 'color-menu') openPalette('c', bt.parentElement ?? bt); else if (c === 'hl-menu') openPalette('hl', bt.parentElement ?? bt);
     else if (c === 'bullet' || c === 'ordered') toggleList(c); else if (c === 'indent' || c === 'outdent') setBlocks(b => { if (b.type === 'li') b.indent = Math.max(0, Math.min(3, (b.indent ?? 0) + (c === 'indent' ? 1 : -1))); });
     else if (c === 'link') void makeLink(); else if (c === 'table') void insertTable(); else if (c === 'image') fileIn.click();
     else if (c === 'copy') doCopy(false); else if (c === 'cut') doCopy(true); else if (c === 'paste') pasteClip(); else if (c === 'selmode') setSelMode(!selMode); else if (c === 'dsel') setDragSel(!dragSel);
     else if (c === 'undo') doUndo(); else if (c === 'redo') doRedo(); else if (c === 'find') findReplace(); else if (c === 'page') pageSettings();
   });
   $('tblock').addEventListener('change', e => { blockStyle((e.target as HTMLSelectElement).value); restoreSel(last); });
-  $('tsize').addEventListener('change', e => { const v = Number((e.target as HTMLSelectElement).value); inline((r, s, en) => patchRuns(r, s, en, x => { const y = { ...x }; if (v) y.fs = v; else delete y.fs; return y; })); });
-  $('tfont').addEventListener('change', e => { const v = (e.target as HTMLSelectElement).value; inline((r, s, en) => patchRuns(r, s, en, x => { const y = { ...x }; if (v) y.ff = v; else delete y.ff; return y; })); });
-  $('tcolor').addEventListener('change', e => { const v = (e.target as HTMLInputElement).value; inline((r, s, en) => patchRuns(r, s, en, x => ({ ...x, c: v }))); });
+  $('tsize').addEventListener('change', e => { const raw = (e.target as HTMLSelectElement).value; if (raw === '__m') return; const v = Number(raw); inline((r, s, en) => patchRuns(r, s, en, x => { const y = { ...x }; if (v) y.fs = v; else delete y.fs; return y; })); });
+  $('tfont').addEventListener('change', e => { const v = (e.target as HTMLSelectElement).value; if (v === '__m') return; inline((r, s, en) => patchRuns(r, s, en, x => { const y = { ...x }; if (v) y.ff = v; else delete y.ff; return y; })); });
+  $('tcolor').addEventListener('change', e => applyColor('c', (e.target as HTMLInputElement).value));
+  $('thl').addEventListener('change', e => applyColor(nativeKind, (e.target as HTMLInputElement).value));
+  paintBars();
   fileIn.addEventListener('change', () => { const f = fileIn.files?.[0]; fileIn.value = ''; if (f) void addImage(f); });
   ctx.addEventListener('click', e => {
     const bt = (e.target as HTMLElement).closest<HTMLElement>('[data-x]'); if (!bt) return; const x = bt.dataset.x!, c = curCell(), ib = selImg ? find(selImg) : undefined;
@@ -326,10 +466,18 @@ export function mountEditor(root: HTMLElement, h: EditorHost): EditorHandle {
       if (x === 'mvup' || x === 'mvdn') { const i = blocks.indexOf(ib), j = i + (x === 'mvup' ? -1 : 1); if (j < 0 || j >= blocks.length) return; mutate(() => { blocks.splice(i, 1); blocks.splice(j, 0, ib); }); return; }
       if (x.startsWith('w')) mutate(() => { (ib as ImageBlock).w = Number(x.slice(1)); }); return;
     }
-    if (!c) return; const cols = c.b.rows[0].length;
+    if (!c) return; const B = c.b, cols = B.rows[0].length, rowsN = B.rows.length, q = cellRect() ?? oneRect(c);
+    if (x === 'selc') { const el = findEd(keyOf0(c)); if (el) { el.focus({ preventScroll: true }); const [an, ao] = locate(el, 0), [zn, zo] = locate(el, 1e9); getSelection()!.setBaseAndExtent(an, ao, zn, zo); updateState(); } return; }
+    if (x === 'selr') return selectSpan(B, q.r1, 0, q.r2, cols - 1); if (x === 'selk') return selectSpan(B, 0, q.c1, rowsN - 1, q.c2); if (x === 'sela') return selectSpan(B, 0, 0, rowsN - 1, cols - 1);
+    if (x.startsWith('ex:')) { const d = x[3]; return selectSpan(B, d === 'u' ? Math.max(0, q.r1 - 1) : q.r1, d === 'l' ? Math.max(0, q.c1 - 1) : q.c1, d === 'd' ? Math.min(rowsN - 1, q.r2 + 1) : q.r2, d === 'r' ? Math.min(cols - 1, q.c2 + 1) : q.c2); }
+    if (x === 'cbg') return openPalette('bg', bt);
+    if (x === 'merge') { if (cellsIn(q).length < 2) return; mutate(() => mergeRect(q)); return caret(findEd(`cell:${B.id}:${q.r1}:${q.c1}`), 0); }
+    if (x === 'unmerge') { mutate(() => unmergeRect(q)); return caret(findEd(`cell:${B.id}:${q.r1}:${q.c1}`), 0); }
+    if ((x === 'delr' && q.r2 - q.r1 + 1 >= rowsN) || (x === 'delc' && q.c2 - q.c1 + 1 >= cols)) return h.toast('Jadvalda kamida bitta qator va ustun qolishi kerak', true);
     mutate(() => {
-      if (x === 'addr') c.b.rows.splice(c.r + 1, 0, emptyRow(cols)); else if (x === 'addc') c.b.rows.forEach(r => r.splice(c.c + 1, 0, [])); else if (x === 'delr' && c.b.rows.length > 1) c.b.rows.splice(c.r, 1);
-      else if (x === 'delc' && cols > 1) c.b.rows.forEach(r => r.splice(c.c, 1)); else if (x === 'head') c.b.header = !c.b.header; else if (x === 'del') blocks.splice(blocks.indexOf(c.b), 1);
+      if (x === 'addr') addRowAt(B, q.r2 + 1); else if (x === 'addrb') addRowAt(B, q.r1); else if (x === 'addc') addColAt(B, q.c2 + 1); else if (x === 'addcb') addColAt(B, q.c1);
+      else if (x === 'delr') { for (let r = q.r2; r >= q.r1; r--) delRowAt(B, r); } else if (x === 'delc') { for (let k = q.c2; k >= q.c1; k--) delColAt(B, k); }
+      else if (x === 'head') B.header = !B.header; else if (x === 'del') blocks.splice(blocks.indexOf(B), 1);
     });
   });
   function updateState() {
@@ -339,12 +487,24 @@ export function mountEditor(root: HTMLElement, h: EditorHost): EditorHandle {
     const flag = (k: Flag) => same && runs.length ? (z > a ? allHave(runs, a, z, k) : a > 0 && allHave(runs, a - 1, a, k)) : false;
     (['b', 'i', 'u', 's', 'sup', 'sub'] as Flag[]).forEach(k => tools.querySelector(`[data-cmd="${k}"]`)?.classList.toggle('on', flag(k)));
     tools.querySelector('[data-cmd="bullet"]')?.classList.toggle('on', isText(b) && b.type === 'li' && b.list === 'bullet'); tools.querySelector('[data-cmd="ordered"]')?.classList.toggle('on', isText(b) && b.type === 'li' && b.list === 'ordered');
-    (['left', 'center', 'right', 'justify'] as Align[]).forEach(al => tools.querySelector(`[data-cmd="al-${al}"]`)?.classList.toggle('on', (isText(b) ? (b.align ?? 'left') : b?.type === 'image' ? b.align : 'left') === al));
+    const curAl: Align = isText(b) ? (b.align ?? 'left') : b?.type === 'image' ? b.align : b?.type === 'table' && el?.dataset.k === 'cell' ? (cellStyle(b, +el.dataset.r!, +el.dataset.c!).a ?? 'left') : 'left';
+    (['left', 'center', 'right', 'justify'] as Align[]).forEach(al => tools.querySelector(`[data-cmd="al-${al}"]`)?.classList.toggle('on', curAl === al));
+    // belgilangan katak to'rtburchagi + shrift/o'lcham ko'rsatkichi
+    const R = cellRect(); body.querySelectorAll('.csel').forEach(x => x.classList.remove('csel')); body.querySelectorAll('.tcs').forEach(x => x.classList.remove('tcs'));
+    if (R) { const tw = body.querySelector<HTMLElement>(`table[data-bid="${R.b.id}"]`); tw?.parentElement?.classList.add('tcs'); tw?.querySelectorAll<HTMLElement>('.ed').forEach(td => { const r = +td.dataset.r!, c = +td.dataset.c!; if (r >= R.r1 && r <= R.r2 && c >= R.c1 && c <= R.c2) td.classList.add('csel'); }); }
+    const selRuns: Run[] = R ? cellsIn(R).flatMap(x => R.b.rows[x.r][x.c]) : same && runs.length ? (z > a ? sliceRuns(runs, a, z) : [a > 0 ? sliceRuns(runs, a - 1, a)[0] ?? runs[0] : runs[0]]) : [];
+    const syncSel = (sel: HTMLSelectElement, vals: string[], label: (v: string) => string) => {
+      const uniq = new Set(vals), v = uniq.size > 1 ? '__m' : (vals[0] ?? ''); if (v !== '__m' && !Array.from(sel.options).some(o => o.value === v)) { const o = document.createElement('option'); o.value = v; o.textContent = label(v); sel.append(o); } if (sel.value !== v) sel.value = v;
+    };
+    syncSel($<HTMLSelectElement>('tsize'), selRuns.map(r => String(r.fs ?? '')), v => v); syncSel($<HTMLSelectElement>('tfont'), selRuns.map(r => r.ff ?? ''), v => v.split(',')[0].replace(/["']/g, ''));
     const ib = selImg ? find(selImg) : undefined;
     const SEL = (n: string) => `<b>${n}</b><button class="tb" data-x="copy">Nusxa</button><button class="tb" data-x="cut">Kesish</button><button class="tb" data-x="paste">Qo‘yish</button><button class="tb" data-x="up" title="Belgilashni yuqoriga kengaytirish">↑ qator</button><button class="tb" data-x="down" title="Belgilashni pastga kengaytirish">↓ qator</button><button class="tb" data-x="all">Hammasi</button><button class="tb" data-x="send">Boshqa sahifaga…</button>`;
     if (selMode) { ctx.hidden = false; ctx.innerHTML = SEL(bsel.length + ' ta blok') + '<button class="tb dng" data-x="delsel">O‘chirish</button><button class="tb" data-x="selx">Tugatish</button>'; }
     else if (ib?.type === 'image') { ctx.hidden = false; const wr = ib.wrap ?? 'block'; ctx.innerHTML = `<b>Rasm</b>${WRAPS.map(([k, t, tt]) => `<button class="tb ${wr === k ? 'on' : ''}" data-x="wrap:${k}" title="${tt}">${t}</button>`).join('')}<span class="tsep"></span>${[25, 50, 75, 100].map(w => `<button class="tb ${Math.round(ib.w) === w ? 'on' : ''}" data-x="w${w}">${w}%</button>`).join('')}<span class="tsep"></span><button class="tb ${ib.crop ? 'on' : ''}" data-x="crop" title="Rasmni qirqish">✂ Qirqish</button><span class="tsep"></span><button class="tb" data-x="mvup" title="Yuqoriga">▲</button><button class="tb" data-x="mvdn" title="Pastga">▼</button><span class="tsep"></span><button class="tb" data-x="copy">Nusxa</button><button class="tb" data-x="cut">Kesish</button><button class="tb" data-x="send">Boshqa sahifaga…</button><button class="tb dng" data-x="del">O‘chirish</button>`; }
-    else if (b?.type === 'table') { ctx.hidden = false; ctx.innerHTML = `<b>Jadval</b><button class="tb" data-x="addr">+ Qator</button><button class="tb" data-x="addc">+ Ustun</button><button class="tb" data-x="delr">− Qator</button><button class="tb" data-x="delc">− Ustun</button><button class="tb ${b.header ? 'on' : ''}" data-x="head">Sarlavha qatori</button><button class="tb dng" data-x="del">Jadvalni o‘chirish</button>`; }
+    else if (b?.type === 'table') {
+      ctx.hidden = false; const cc = curCell(), q = cellRect() ?? (cc ? oneRect(cc) : null), many = q ? cellsIn(q).length > 1 : false, hasM = q ? (b.merges ?? []).some(m => m.r <= q.r2 && m.r + m.rs - 1 >= q.r1 && m.c <= q.c2 && m.c + m.cs - 1 >= q.c1) : false;
+      ctx.innerHTML = `<b>Jadval${R ? ` · ${R.r2 - R.r1 + 1}×${R.c2 - R.c1 + 1} katak` : ''}</b><button class="tb" data-x="selc" title="Shu katakdagi butun matnni belgilash">Katak</button><button class="tb" data-x="selr" title="Butun qatorni belgilash">Qator</button><button class="tb" data-x="selk" title="Butun ustunni belgilash">Ustun</button><button class="tb" data-x="sela" title="Butun jadvalni belgilash">Jadval</button><span class="tsep"></span><button class="tb" data-x="ex:u" title="Belgilashni yuqoriga kengaytirish">▲</button><button class="tb" data-x="ex:d" title="Belgilashni pastga kengaytirish">▼</button><button class="tb" data-x="ex:l" title="Belgilashni chapga kengaytirish">◀</button><button class="tb" data-x="ex:r" title="Belgilashni o‘ngga kengaytirish">▶</button><span class="tsep"></span><button class="tb" data-x="merge" ${many ? '' : 'disabled'} title="Belgilangan kataklarni bitta katakka birlashtirish">Birlashtirish</button><button class="tb" data-x="unmerge" ${hasM ? '' : 'disabled'} title="Birlashtirilgan katakni qayta ajratish">Ajratish</button><button class="tb" data-x="cbg" title="Katak foni (belgilangan hamma katakka)">Katak foni</button><span class="tsep"></span><button class="tb" data-x="addrb">↑ Qator</button><button class="tb" data-x="addr">↓ Qator</button><button class="tb" data-x="addcb">← Ustun</button><button class="tb" data-x="addc">→ Ustun</button><button class="tb" data-x="delr">− Qator</button><button class="tb" data-x="delc">− Ustun</button><span class="tsep"></span><button class="tb ${b.header ? 'on' : ''}" data-x="head">Sarlavha qatori</button><button class="tb dng" data-x="del">Jadvalni o‘chirish</button>`;
+    }
     else if (cur && !(cur.ak === cur.bk && cur.ao === cur.bo) && ss) { ctx.hidden = false; ctx.innerHTML = SEL('Belgilangan'); }
     else ctx.hidden = true;
   }
@@ -354,6 +514,7 @@ export function mountEditor(root: HTMLElement, h: EditorHost): EditorHandle {
   function fragFromBlocks(ids: string[]): Frag | null { const bl = blocks.filter(b => ids.includes(b.id)); return bl.length ? { blocks: JSON.parse(JSON.stringify(bl)) as Block[], startPartial: false, endPartial: false, assets: collectAssets(doc, bl) } : null; }
   function fragFromSel(): Frag | null {
     if (selMode) return fragFromBlocks(bsel); if (selImg) return fragFromBlocks([selImg]);
+    const R = cellRect(); if (R) return fragFromRect(R);
     const ss = saveSel() ?? last; if (!ss || (ss.ak === ss.bk && ss.ao === ss.bo)) return null;
     const list = eds(), ia = idxK(ss.ak), ib = idxK(ss.bk); if (ia < 0 || ib < 0) return null;
     const out: Block[] = [], seen = new Set<string>();
@@ -368,6 +529,7 @@ export function mountEditor(root: HTMLElement, h: EditorHost): EditorHandle {
     if (!out.length) return null; const one = ia === ib; return { blocks: out, startPartial: one || (list[ia].dataset.k === 'blk' && !(ss.ao === 0)), endPartial: one || (() => { const e2 = list[ib]; return e2.dataset.k === 'blk' && ss.bo < runsLength(getRuns(e2)); })(), assets: collectAssets(doc, out) };
   }
   function deleteRange(ss: SavedSel): { k: string; o: number } {
+    const R = cellRect(); if (R) { for (const { r, c } of cellsIn(R)) R.b.rows[r][c] = []; return { k: `cell:${R.b.id}:${R.r1}:${R.c1}`, o: 0 }; }
     const list = eds(), ia = idxK(ss.ak), ib = idxK(ss.bk);
     if (ia === ib) { const el = list[ia]; setRuns(el, replaceRange(getRuns(el), ss.ao, ss.bo, '')); return { k: ss.ak, o: ss.ao }; }
     const first = list[ia], le = list[ib], fb = find(first.dataset.bid!), lb = find(le.dataset.bid!);
@@ -451,7 +613,9 @@ export function mountEditor(root: HTMLElement, h: EditorHost): EditorHandle {
   const caretAt = (x: number, y: number): { n: Node; o: number } | null => { const d = document as unknown as { caretRangeFromPoint?(x: number, y: number): Range | null; caretPositionFromPoint?(x: number, y: number): { offsetNode: Node; offset: number } | null }; if (d.caretRangeFromPoint) { const r = d.caretRangeFromPoint(x, y); return r ? { n: r.startContainer, o: r.startOffset } : null; } const p = d.caretPositionFromPoint?.(x, y); return p ? { n: p.offsetNode, o: p.offset } : null; };
   let lastPT = 'mouse'; body.addEventListener('pointerdown', e => { lastPT = e.pointerType; }, true);
   body.addEventListener('mousedown', e => {
-    dragA = null; if (selMode || e.button !== 0 || e.shiftKey || e.detail !== 1 || lastPT !== 'mouse') return;
+    dragA = null;
+    if (!selMode && e.button === 0 && e.shiftKey && lastPT === 'mouse') { const g = getSelection(), ed0 = edOf(e.target as Node), c0 = ed0 ? caretAt(e.clientX, e.clientY) : null; if (g && g.anchorNode && body.contains(g.anchorNode) && ed0 && c0) { e.preventDefault(); g.setBaseAndExtent(g.anchorNode, g.anchorOffset, c0.n, c0.o); updateState(); } return; }
+    if (selMode || e.button !== 0 || e.shiftKey || e.detail !== 1 || lastPT !== 'mouse') return;
     const ed = edOf(e.target as Node), c = ed ? caretAt(e.clientX, e.clientY) : null; if (!ed || !c) return;
     e.preventDefault(); ed.focus({ preventScroll: true }); getSelection()!.setBaseAndExtent(c.n, c.o, c.n, c.o); dragA = { n: c.n, o: c.o, ed };
   }, true);

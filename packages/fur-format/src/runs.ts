@@ -1,6 +1,6 @@
 import type { Run } from './model';
 type Flag = 'b' | 'i' | 'u' | 's' | 'sup' | 'sub';
-const KEYS: (keyof Run)[] = ['b', 'i', 'u', 's', 'sup', 'sub', 'c', 'fs', 'ff', 'href'];
+const KEYS: (keyof Run)[] = ['b', 'i', 'u', 's', 'sup', 'sub', 'c', 'hl', 'fs', 'ff', 'href'];
 const same = (a: Run, b: Run) => KEYS.every(k => a[k] === b[k]);
 export const runsLength = (r: Run[]): number => r.reduce((n, x) => n + x.t.length, 0);
 export const plainText = (r: Run[]): string => r.map(x => x.t).join('');

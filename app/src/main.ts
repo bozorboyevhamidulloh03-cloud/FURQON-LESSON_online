@@ -88,8 +88,8 @@ async function createFolder() {
   const t = await askText('Yangi papka nomi', '', 'Yaratish'); if (!t) return;
   await db.putFolder({ id: uid('f'), name: t, parentId: S.folderId, created: Date.now() }); await refresh(); render();
 }
-async function importFiles(files: FileList | File[]) {
-  let n = 0, pdfMode: 'img' | 'text' | null = null;
+async function importFiles(files: FileList | File[]): Promise<DocMeta[]> {
+  let n = 0, pdfMode: 'img' | 'text' | null = null; const made: DocMeta[] = [];
   for (const f of Array.from(files)) {
     try {
       const bytes = new Uint8Array(await f.arrayBuffer()), kind = sniff(bytes, f.name);
@@ -97,17 +97,18 @@ async function importFiles(files: FileList | File[]) {
         const prog = (m: string) => toast(m);
         if (kind === 'pdf' && !pdfMode) { pdfMode = await modal<'img' | 'text'>(`<h3>PDF qanday import qilinsin?</h3><div class="choose"><button class="opt" data-v="img"><b>Sahifa rasmi (doska)</b><span>Har bet aynan o‘zidek ko‘rinadi, ustiga yozish va chizish mumkin. Matn tahrirlanmaydi. Skaner PDF uchun ham ishlaydi.</span></button><button class="opt" data-v="text"><b>Tahrirlanadigan matn</b><span>Matn, ro‘yxat, rang va rasmlar hujjat bloklariga ajratiladi. Murakkab jadval/grafiklar soddalashishi mumkin.</span></button></div><div class="row"><button class="btn" data-v="">Bekor qilish</button></div>`, (box, done) => { box.querySelectorAll<HTMLElement>('[data-v]').forEach(b => b.addEventListener('click', () => done((b.dataset.v || null) as any))); }); if (!pdfMode) continue; }
         const doc = kind === 'pdf' ? (pdfMode === 'text' ? await importPdfText(bytes, f.name, prog) : await importPdf(bytes, f.name, prog)) : kind === 'docx' ? await importDocx(bytes, f.name, prog) : await importImage(bytes, f.name);
-        await storeNew(doc); n++; const w = (doc as any).__warn as number | undefined;
+        made.push(await storeNew(doc)); n++; const w = (doc as any).__warn as number | undefined;
         toast(`"${doc.title}" ${kind === 'pdf' ? 'PDF' : kind === 'docx' ? 'Word' : 'rasm'} import qilindi (${doc.pages.length} sahifa)${(doc as any).__note ? ' · ' + (doc as any).__note : ''}${w ? ` · ${w} ta element o‘tkazib yuborildi` : ''}`); continue;
       }
       if (kind === 'unknown' && !(bytes[0] === 0x50 && bytes[1] === 0x4b)) throw new FurError('UNSUPPORTED_VERSION', 'Qo‘llab-quvvatlanmaydigan fayl (.fur, .pdf, .docx yoki rasm bo‘lsin)');
-      const r = await parseFur(bytes); await storeNew(r.doc); n++;
+      const r = await parseFur(bytes); made.push(await storeNew(r.doc)); n++;
       toast(r.migrated ? `"${r.doc.title}" ochildi (format ${r.sourceVersion} → 1.1 ga o‘tkazildi)` : `"${r.doc.title}" import qilindi`);
     } catch (e) { toast(`${f.name}: ${e instanceof FurError ? e.message : 'o‘qib bo‘lmadi'}`, true); }
   }
   if (n) { await refresh(); render(); }
+  return made;
 }
-interface FurNativeApi { saveFile(name: string, mime: string, b64: string, last: boolean): void; version(): string; checkUpdate(): void; openExternal(u: string): void }
+interface FurNativeApi { saveFile(name: string, mime: string, b64: string, last: boolean): void; version(): string; checkUpdate(): void; openExternal(u: string): void; incomingList?(): string; incomingChunk?(id: number, off: number, len: number): string; incomingDone?(id: number): void }
 const native = (): FurNativeApi | null => (window as unknown as { FurNative?: FurNativeApi }).FurNative ?? null;
 function download(bytes: Uint8Array, name: string, ext = '.fur', mime = 'application/octet-stream') {
   const fname = name.replace(/[\\/:*?"<>|]/g, '_') + ext, nat = native();
@@ -469,10 +470,35 @@ window.addEventListener('drop', e => { e.preventDefault(); if (e.dataTransfer?.f
 window.addEventListener('visibilitychange', () => { if (document.hidden && S.ses && S.ses.status !== 'saved') void persist(); });
 
 function toggleTheme() { setSettings({ mode: effectiveMode() === 'dark' ? 'light' : 'dark' }); }
+let incBusy = false, incWanted = false, appReady = false;
 initTheme();
 if ('serviceWorker' in navigator && location.protocol.startsWith('http') && !native()) navigator.serviceWorker.register('sw.js').catch(() => {});
-(async () => { try { await refresh(); } catch { S.err = 'Brauzer xotirasi (IndexedDB) mavjud emas'; } render(); if (S.err) toast(S.err, true); })();
+(async () => { try { await refresh(); } catch { S.err = 'Brauzer xotirasi (IndexedDB) mavjud emas'; } render(); if (S.err) toast(S.err, true); appReady = true; void checkIncoming(); })();
 (window as any).__fur = { S, openDoc, refresh, render };
+
+/** "Ochish" (Open with) / "Ulashish" orqali kelgan .fur (va PDF/DOCX/rasm) fayllar: Android qobig'i xotirada ushlab turadi, bu yerda olib import qilinadi va ochiladi. */
+async function checkIncoming() {
+  const n = native(); if (!n?.incomingList || !n.incomingChunk || !n.incomingDone) return;
+  if (!appReady || incBusy) { incWanted = true; return; }
+  incBusy = true; incWanted = false;
+  try {
+    const list = JSON.parse(n.incomingList()) as { id: number; name: string; size: number }[]; if (!Array.isArray(list) || !list.length) return;
+    const files: File[] = [], CH = 3 * 256 * 1024;
+    for (const it of list) {
+      const parts: Uint8Array[] = [];
+      for (let off = 0; off < it.size; off += CH) { const bin = atob(n.incomingChunk(it.id, off, Math.min(CH, it.size - off))), u = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i); parts.push(u); }
+      n.incomingDone(it.id); files.push(new File(parts as unknown as BlobPart[], it.name || 'fayl.fur'));
+    }
+    if (S.ses) await closeDoc();
+    const made = await importFiles(files);
+    if (made.length === 1) await openDoc(made[0].id);
+  } catch (e) { toast('Faylni ochib bo‘lmadi' + (e instanceof Error && e.message ? ': ' + e.message : ''), true); }
+  finally { incBusy = false; if (incWanted) void checkIncoming(); }
+}
+(window as unknown as { __furIncoming: () => void }).__furIncoming = () => { void checkIncoming(); };
+// Brauzer/PWA (kompyuter): .fur faylni "Ochish" orqali ishga tushirish (manifest file_handlers)
+(window as unknown as { launchQueue?: { setConsumer(f: (p: { files: { getFile(): Promise<File> }[] }) => void): void } }).launchQueue?.setConsumer(async p => { try { const fs = await Promise.all(p.files.map(h => h.getFile())); if (!fs.length) return; if (S.ses) await closeDoc(); const made = await importFiles(fs); if (made.length === 1) await openDoc(made[0].id); } catch { /* */ } });
+
 
 /** Android "orqaga" tugmasi uchun: true = ilova o'zi ishladi, false = ilovadan chiqish mumkin. */
 (window as unknown as { __furBack: () => boolean }).__furBack = () => {

@@ -5,7 +5,9 @@ import android.app.Activity;
 import android.content.pm.PackageManager;
 import android.content.ClipData;
 import android.content.Intent;
+import android.database.Cursor;
 import android.net.Uri;
+import android.provider.OpenableColumns;
 import android.os.Bundle;
 import android.util.Base64;
 import android.view.View;
@@ -25,6 +27,7 @@ import android.widget.Toast;
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -40,6 +43,11 @@ public class MainActivity extends Activity {
     private ValueCallback<Uri[]> fileCb;
     private ByteArrayOutputStream saveBuf;
     private byte[] saveBytes;
+    // "Ochish"/"Ulashish" orqali kelgan fayllar (veb-qism ularni incomingList/Chunk orqali oladi)
+    private final ArrayList<Object[]> incoming = new ArrayList<>(); // {Integer id, String name, byte[] data}
+    private int incomingSeq = 0;
+    private boolean pageReady = false;
+    private static final int MAX_INCOMING = 200 << 20;
 
     @Override
     protected void onCreate(Bundle b) {
@@ -70,6 +78,61 @@ public class MainActivity extends Activity {
         web.setWebChromeClient(new Chrome());
         web.loadUrl("https://" + HOST + "/index.html");
         up.autoCheck();
+        handleIntent(getIntent());
+    }
+
+    @Override
+    protected void onNewIntent(Intent i) {
+        super.onNewIntent(i);
+        setIntent(i);
+        handleIntent(i);
+    }
+
+    // ---------- tashqaridan kelgan fayllar (.fur ni "Ochish") ----------
+    private void handleIntent(Intent it) {
+        if (it == null) return;
+        final ArrayList<Uri> uris = new ArrayList<>();
+        String act = it.getAction();
+        try {
+            if (Intent.ACTION_VIEW.equals(act) && it.getData() != null) uris.add(it.getData());
+            else if (Intent.ACTION_SEND.equals(act)) { Uri u = it.getParcelableExtra(Intent.EXTRA_STREAM); if (u != null) uris.add(u); }
+            else if (Intent.ACTION_SEND_MULTIPLE.equals(act)) { ArrayList<Uri> l = it.getParcelableArrayListExtra(Intent.EXTRA_STREAM); if (l != null) uris.addAll(l); }
+        } catch (Exception e) { return; }
+        if (uris.isEmpty()) return;
+        it.setAction(null); it.setData(null); // aylantirilganda (rotation) qayta ochilmasin
+        new Thread(() -> {
+            for (Uri u : uris) {
+                try {
+                    String name = displayName(u);
+                    ByteArrayOutputStream bo = new ByteArrayOutputStream();
+                    try (InputStream in = getContentResolver().openInputStream(u)) {
+                        if (in == null) throw new java.io.IOException("ochilmadi");
+                        byte[] buf = new byte[65536]; int n;
+                        while ((n = in.read(buf)) > 0) { bo.write(buf, 0, n); if (bo.size() > MAX_INCOMING) throw new java.io.IOException("fayl juda katta"); }
+                    }
+                    synchronized (incoming) { incoming.add(new Object[]{ ++incomingSeq, name, bo.toByteArray() }); }
+                } catch (Throwable e) {
+                    final String m = String.valueOf(e.getMessage());
+                    runOnUiThread(() -> Toast.makeText(this, "Faylni o‘qib bo‘lmadi: " + m, Toast.LENGTH_LONG).show());
+                }
+            }
+            runOnUiThread(this::notifyIncoming);
+        }).start();
+    }
+
+    private String displayName(Uri u) {
+        String name = null;
+        if ("content".equals(u.getScheme())) {
+            try (Cursor c = getContentResolver().query(u, new String[]{ OpenableColumns.DISPLAY_NAME }, null, null, null)) {
+                if (c != null && c.moveToFirst()) name = c.getString(0);
+            } catch (Exception ignored) { }
+        }
+        if (name == null || name.isEmpty()) { name = u.getLastPathSegment(); if (name != null && name.contains("/")) name = name.substring(name.lastIndexOf('/') + 1); }
+        return name == null || name.isEmpty() ? "fayl.fur" : name;
+    }
+
+    private void notifyIncoming() {
+        if (pageReady && web != null) web.evaluateJavascript("(function(){try{window.__furIncoming&&window.__furIncoming()}catch(e){}})()", null);
     }
 
     // ---------- yordamchilar (Updater ishlatadi) ----------
@@ -109,7 +172,7 @@ public class MainActivity extends Activity {
         }
 
         @Override
-        public void onPageFinished(WebView v, String url) { up.onPageLoaded(); }
+        public void onPageFinished(WebView v, String url) { up.onPageLoaded(); pageReady = true; notifyIncoming(); }
     }
 
     private final class Chrome extends WebChromeClient {
@@ -226,6 +289,26 @@ public class MainActivity extends Activity {
         @JavascriptInterface public String version() { return "{\"web\":" + up.current() + ",\"apk\":" + BuildConfig.APK_LEVEL + "}"; }
         @JavascriptInterface public void checkUpdate() { up.check(true); }
         @JavascriptInterface public void setUpdateUrl(String u) { up.setUpdateUrl(u); }
+        @JavascriptInterface
+        public String incomingList() {
+            org.json.JSONArray a = new org.json.JSONArray();
+            synchronized (incoming) {
+                try { for (Object[] o : incoming) { org.json.JSONObject j = new org.json.JSONObject(); j.put("id", (Integer) o[0]); j.put("name", (String) o[1]); j.put("size", ((byte[]) o[2]).length); a.put(j); } } catch (Exception ignored) { }
+            }
+            return a.toString();
+        }
+        @JavascriptInterface
+        public String incomingChunk(int id, int off, int len) {
+            synchronized (incoming) {
+                for (Object[] o : incoming) if ((Integer) o[0] == id) {
+                    byte[] d = (byte[]) o[2]; if (off < 0 || off >= d.length) return "";
+                    int n = Math.min(len, d.length - off); return Base64.encodeToString(d, off, n, Base64.NO_WRAP);
+                }
+            }
+            return "";
+        }
+        @JavascriptInterface
+        public void incomingDone(int id) { synchronized (incoming) { for (int i = 0; i < incoming.size(); i++) if ((Integer) incoming.get(i)[0] == id) { incoming.remove(i); break; } } }
         @JavascriptInterface public void openExternal(String u) { if (u != null && (u.startsWith("https://") || u.startsWith("http://"))) runOnUiThread(() -> openUrl(u)); }
 
         @JavascriptInterface

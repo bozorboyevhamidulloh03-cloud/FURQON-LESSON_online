@@ -8,10 +8,14 @@ export interface TextObj { t: 'text'; id: string; x: number; y: number; tx: stri
 export interface Crop { l: number; t: number; r: number; b: number }
 export interface ImageObj { t: 'image'; id: string; a: string; x: number; y: number; w: number; h: number; crop?: Crop }
 export type FurObject = StrokeObj | ShapeObj | TextObj | ImageObj;
-export interface Run { t: string; b?: boolean; i?: boolean; u?: boolean; s?: boolean; sup?: boolean; sub?: boolean; c?: string; fs?: number; ff?: string; href?: string }
+export interface Run { t: string; b?: boolean; i?: boolean; u?: boolean; s?: boolean; sup?: boolean; sub?: boolean; c?: string; hl?: string; fs?: number; ff?: string; href?: string }
 export type Align = 'left' | 'center' | 'right' | 'justify';
 export interface TextBlock { id: string; type: 'heading' | 'paragraph' | 'li'; level?: 1 | 2 | 3; list?: 'bullet' | 'ordered'; indent?: number; align?: Align; runs: Run[] }
-export interface TableBlock { id: string; type: 'table'; header: boolean; rows: Run[][][] }
+/** Birlashtirilgan katak: (r,c) — yuqori-chap katak, rs × cs — qator va ustun soni. Qolgan kataklar yashirin va bo‘sh. */
+export interface CellMerge { r: number; c: number; rs: number; cs: number }
+/** Katak uslubi: a — matn tekislanishi, bg — katak foni. Kalit: "qator,ustun". */
+export interface CellStyle { a?: Align; bg?: string }
+export interface TableBlock { id: string; type: 'table'; header: boolean; rows: Run[][][]; merges?: CellMerge[]; cs?: Record<string, CellStyle> }
 export type ImageWrap = 'block' | 'left' | 'right' | 'behind' | 'front';
 /** wrap: block (matn bilan, o‘z qatorida), left/right (matn o‘rab oladi), behind/front (matn ortida/ustida, x=% kenglik, y=px) */
 export interface ImageBlock { id: string; type: 'image'; a: string; w: number; align: Align; caption: Run[]; wrap?: ImageWrap; x?: number; y?: number; crop?: Crop }

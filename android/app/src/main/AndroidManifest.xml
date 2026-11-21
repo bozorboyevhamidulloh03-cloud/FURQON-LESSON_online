@@ -28,6 +28,61 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+
+            <!-- .fur faylni "Ochish" (Open with) ro'yxatida ko'rsatish.
+                 1) Fayl menejerlari .fur ga noma'lum tur beradi (octet-stream) yoki o'zimizning x-fur turini ishlatadi. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="content" />
+                <data android:scheme="file" />
+                <data android:mimeType="application/x-fur" />
+                <data android:mimeType="application/vnd.furqon.fur" />
+                <data android:mimeType="application/octet-stream" />
+                <data android:mimeType="application/zip" />
+                <data android:mimeType="application/x-zip-compressed" />
+            </intent-filter>
+            <!-- 2) Tur "*/*" bo'lib kelsa — manzil .fur bilan tugagan fayllargina (nuqtalar soni har xil bo'lishi mumkin). -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="content" />
+                <data android:scheme="file" />
+                <data android:host="*" />
+                <data android:mimeType="*/*" />
+                <data android:pathPattern=".*\\.fur" />
+                <data android:pathPattern=".*\\..*\\.fur" />
+                <data android:pathPattern=".*\\..*\\..*\\.fur" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\.fur" />
+            </intent-filter>
+            <!-- 3) Turi ko'rsatilmagan (faqat manzil) holat. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="content" />
+                <data android:scheme="file" />
+                <data android:host="*" />
+                <data android:pathPattern=".*\\.fur" />
+                <data android:pathPattern=".*\\..*\\.fur" />
+                <data android:pathPattern=".*\\..*\\..*\\.fur" />
+            </intent-filter>
+            <!-- "Ulashish" (Share) -> FURQON Online -->
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="application/x-fur" />
+                <data android:mimeType="application/vnd.furqon.fur" />
+                <data android:mimeType="application/octet-stream" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND_MULTIPLE" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="application/x-fur" />
+                <data android:mimeType="application/octet-stream" />
+            </intent-filter>
         </activity>
     </application>
 </manifest>

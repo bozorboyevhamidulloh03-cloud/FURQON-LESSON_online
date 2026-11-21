@@ -1,7 +1,7 @@
 import { crcHex, sha256Hex } from './crc32';
 import { FurError } from './errors';
 import { readZip, writeZip, ZipEntry, ZipLimits, DEFAULT_LIMITS } from './zip';
-import { Align, Background, Block, Crop, ImageBlock, FORMAT_VERSION, FurAsset, FurDocument, FurObject, FurPage, Layout, PageType, Run, defaultLayout, uid } from './model';
+import { Align, Background, Block, CellMerge, CellStyle, Crop, ImageBlock, TableBlock, FORMAT_VERSION, FurAsset, FurDocument, FurObject, FurPage, Layout, PageType, Run, defaultLayout, uid } from './model';
 import { normalizeRuns } from './runs';
 
 const MIMES: Record<string, string> = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp', 'image/gif': 'gif', 'audio/mpeg': 'mp3', 'audio/wav': 'wav', 'video/mp4': 'mp4' };
@@ -42,6 +42,7 @@ function cleanRuns(a: any): Run[] {
     const r: Run = { t: x.t.slice(0, 100000) };
     for (const k of ['b', 'i', 'u', 's', 'sup', 'sub'] as const) if (x[k] === true) r[k] = true;
     if (typeof x.c === 'string' && /^#[0-9a-fA-F]{3,8}$/.test(x.c)) r.c = x.c;
+    if (typeof x.hl === 'string' && /^#[0-9a-fA-F]{3,8}$/.test(x.hl)) r.hl = x.hl;
     if (num(x.fs) && x.fs >= 6 && x.fs <= 200) r.fs = x.fs;
     if (typeof x.ff === 'string' && /^[\w\s,'"-]{1,80}$/.test(x.ff)) r.ff = x.ff;
     if (typeof x.href === 'string' && x.href.length < 2000 && /^(https?:|mailto:)/i.test(x.href)) r.href = x.href;
@@ -68,7 +69,26 @@ function cleanBlocks(b: any): Block[] {
       const rows: Run[][][] = x.rows.slice(0, 200).map((r: any) => Array.isArray(r) ? r.slice(0, 30).map(cleanRuns) : []);
       const cols = Math.max(1, ...rows.map(r => r.length));
       for (const r of rows) while (r.length < cols) r.push([]);
-      if (rows.length) out.push({ id, type: 'table', header: !!x.header, rows });
+      if (rows.length) {
+        const tb: TableBlock = { id, type: 'table', header: !!x.header, rows }, R = rows.length;
+        const merges: CellMerge[] = [], taken = new Set<string>();
+        if (Array.isArray(x.merges)) for (const m of x.merges.slice(0, 400)) {
+          if (!m || ![m.r, m.c, m.rs, m.cs].every(Number.isInteger) || m.r < 0 || m.c < 0 || m.rs < 1 || m.cs < 1 || m.rs * m.cs < 2 || m.r + m.rs > R || m.c + m.cs > cols) continue;
+          const cells: string[] = []; for (let i = m.r; i < m.r + m.rs; i++) for (let j = m.c; j < m.c + m.cs; j++) cells.push(i + ',' + j);
+          if (cells.some(k => taken.has(k))) continue; cells.forEach(k => taken.add(k)); merges.push({ r: m.r, c: m.c, rs: m.rs, cs: m.cs });
+        }
+        if (merges.length) tb.merges = merges;
+        if (x.cs && typeof x.cs === 'object') {
+          const cs: Record<string, CellStyle> = {};
+          for (const [k, v] of Object.entries(x.cs as Record<string, any>).slice(0, 6000)) {
+            const mm = /^(\d{1,3}),(\d{1,2})$/.exec(k); if (!mm || +mm[1] >= R || +mm[2] >= cols || !v || typeof v !== 'object') continue;
+            const st: CellStyle = {}; const al = cleanAlign(v.a); if (al && al !== 'left') st.a = al; if (typeof v.bg === 'string' && /^#[0-9a-fA-F]{3,8}$/.test(v.bg)) st.bg = v.bg;
+            if (st.a || st.bg) cs[k] = st;
+          }
+          if (Object.keys(cs).length) tb.cs = cs;
+        }
+        out.push(tb);
+      }
     } else if (x.type === 'image' && typeof x.a === 'string' && ID_RE.test(x.a)) {
       const ib: ImageBlock = { id, type: 'image', a: x.a, w: num(x.w) ? Math.max(5, Math.min(100, x.w)) : 100, align: cleanAlign(x.align) ?? 'center', caption: cleanRuns(x.caption) };
       if (x.wrap === 'left' || x.wrap === 'right' || x.wrap === 'behind' || x.wrap === 'front') ib.wrap = x.wrap;
