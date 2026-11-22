@@ -44,6 +44,7 @@ public class MainActivity extends Activity {
     private ByteArrayOutputStream saveBuf;
     private byte[] saveBytes;
     // "Ochish"/"Ulashish" orqali kelgan fayllar (veb-qism ularni incomingList/Chunk orqali oladi)
+    private RecStore recs;
     private final ArrayList<Object[]> incoming = new ArrayList<>(); // {Integer id, String name, byte[] data}
     private int incomingSeq = 0;
     private boolean pageReady = false;
@@ -73,6 +74,7 @@ public class MainActivity extends Activity {
 
         up = new Updater(this);
         up.init();
+        recs = new RecStore(this);
         web.addJavascriptInterface(new Bridge(), "FurNative");
         web.setWebViewClient(new Client());
         web.setWebChromeClient(new Chrome());
@@ -150,6 +152,10 @@ public class MainActivity extends Activity {
             Uri u = r.getUrl();
             if (!HOST.equals(u.getHost())) return null;
             String p = u.getPath();
+            if (p != null && p.startsWith("/__rec/")) { // ilova ichidagi yozuv pleyeri
+                try { String t = p.substring(7); int dot = t.indexOf('.'); if (dot > 0) t = t.substring(0, dot); String id = new String(Base64.decode(t, Base64.URL_SAFE | Base64.NO_PADDING | Base64.NO_WRAP), "UTF-8"); return recs.serve(id, r.getRequestHeaders().get("Range")); }
+                catch (Throwable e) { return new WebResourceResponse("text/plain", "utf-8", 400, "Bad Request", new HashMap<String, String>(), new java.io.ByteArrayInputStream(new byte[0])); }
+            }
             if (p == null || p.equals("/")) p = "/index.html";
             p = p.substring(1);
             Map<String, String> h = new HashMap<>();
@@ -289,6 +295,24 @@ public class MainActivity extends Activity {
         @JavascriptInterface public String version() { return "{\"web\":" + up.current() + ",\"apk\":" + BuildConfig.APK_LEVEL + "}"; }
         @JavascriptInterface public void checkUpdate() { up.check(true); }
         @JavascriptInterface public void setUpdateUrl(String u) { up.setUpdateUrl(u); }
+        // ---- dars yozuvlari ("Movies/FURQON Recordings") ----
+        @JavascriptInterface public String recSaveBegin(String name, String mime) { return recs.begin(name, mime); }
+        @JavascriptInterface public boolean recSaveChunk(String tok, String b64) { return recs.chunk(tok, b64); }
+        @JavascriptInterface public String recSaveEnd(String tok, boolean ok) { return recs.end(tok, ok); }
+        @JavascriptInterface public String recList() { return recs.list(); }
+        @JavascriptInterface public boolean recDelete(String id) { return recs.delete(id); }
+        @JavascriptInterface public String recWhere() { return RecStore.REL; }
+        @JavascriptInterface
+        public void recShare(final String id) {
+            if (!recs.own(id)) return;
+            runOnUiThread(() -> {
+                try {
+                    Uri u = Uri.parse(id); if ("file".equals(u.getScheme())) { Toast.makeText(MainActivity.this, "Fayl: " + u.getPath(), Toast.LENGTH_LONG).show(); return; }
+                    Intent s = new Intent(Intent.ACTION_SEND); s.setType(recs.mimeOf(id)); s.putExtra(Intent.EXTRA_STREAM, u); s.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                    startActivity(Intent.createChooser(s, "Yozuvni ulashish"));
+                } catch (Throwable e) { Toast.makeText(MainActivity.this, "Ulashib bo‘lmadi", Toast.LENGTH_SHORT).show(); }
+            });
+        }
         @JavascriptInterface
         public String incomingList() {
             org.json.JSONArray a = new org.json.JSONArray();

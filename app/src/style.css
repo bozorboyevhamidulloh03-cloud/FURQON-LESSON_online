@@ -167,3 +167,19 @@ select{height:38px;border:1px solid var(--line);background:var(--card);border-ra
 .pres [data-p=recp].on{color:#ffc928}
 @media(prefers-reduced-motion:reduce){.pres-rec i{animation:none}}
 .pres-rec[hidden]{display:none}
+
+/* ---- yozuvlar, tanlash, efirga qaytish, amallar oynasi ---- */
+.sheetl{display:flex;flex-direction:column;gap:6px;margin:10px 0;max-height:60vh;overflow:auto}
+.sbtn{border:1px solid var(--line);background:var(--card);color:var(--ink);text-align:left;padding:13px 14px;border-radius:12px;font-size:15px;cursor:pointer}.sbtn:hover{background:var(--accentbg);border-color:var(--accent)}.sbtn.dng{color:var(--danger)}
+.chk{position:absolute;top:8px;left:8px;width:24px;height:24px;border-radius:50%;border:2px solid #fff;background:rgba(0,0,0,.35);box-shadow:0 1px 4px rgba(0,0,0,.4);z-index:3}.chk.on{background:var(--accent);border-color:var(--accent)}.chk.on::after{content:"";position:absolute;left:7px;top:3px;width:6px;height:11px;border:solid #fff;border-width:0 3px 3px 0;transform:rotate(45deg)}
+.card{position:relative}.card.sel,.rrow.sel{outline:2px solid var(--accent);outline-offset:-2px}.thumb{position:relative}
+.selbar{position:fixed;left:50%;bottom:14px;transform:translateX(-50%);z-index:60;display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:center;padding:10px 14px;border-radius:16px;background:var(--pop,#fff);border:1px solid var(--line2);box-shadow:0 14px 40px rgba(0,10,40,.5);max-width:calc(100vw - 16px)}.selbar b{margin-right:4px}.selbar .btn:disabled{opacity:.45}
+.recbar{display:flex;flex-wrap:wrap;gap:6px 14px;align-items:baseline;margin:2px 0 12px}
+.reclist{display:flex;flex-direction:column;gap:8px;padding-bottom:70px}
+.rrow{position:relative;display:flex;align-items:center;gap:12px;padding:10px 12px;border-radius:14px;background:var(--card);border:1px solid var(--line);cursor:pointer}.rrow:hover{border-color:var(--accent)}
+.rrow .chk{position:static;flex:none}.rthumb{flex:none;width:64px;height:42px;border-radius:10px;display:grid;place-items:center;color:#fff;background:linear-gradient(135deg,#0b3a8a,#1ea0ff)}.rthumb svg{width:22px;height:22px}
+.rinf{flex:1;min-width:0}.rinf h3{margin:0;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.rinf p{margin:2px 0 0;font-size:12.5px;color:var(--mut)}
+.recvid{width:100%;max-height:56vh;background:#000;border-radius:12px;margin:8px 0}.speeds{display:flex;flex-wrap:wrap;gap:6px;margin:4px 0 8px}.rtitle{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.livecard{display:flex;align-items:center;gap:12px;padding:12px 14px;margin:0 0 14px;border-radius:16px;background:var(--card);border:1px solid var(--line)}.livecard.on{border-color:#2fbf71;box-shadow:0 0 0 1px rgba(47,191,113,.35),0 8px 28px rgba(47,191,113,.18)}
+.livecard .pulse{flex:none;width:12px;height:12px;border-radius:50%;background:#8a94a6}.livecard.on .pulse{background:#2fbf71;animation:lcp 1.4s infinite}@keyframes lcp{0%{box-shadow:0 0 0 0 rgba(47,191,113,.7)}100%{box-shadow:0 0 0 12px rgba(47,191,113,0)}}
+.lcinf{flex:1;min-width:0}.lcinf b{display:block}.lcinf small{display:block;color:var(--mut);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}

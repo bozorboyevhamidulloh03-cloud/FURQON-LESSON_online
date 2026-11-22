@@ -1,0 +1,29 @@
+name: FURQON Windows
+# Windows 10/11 (x64): o'rnatuvchi (Setup.exe, .fur bilan bog'lanadi) va ko'chma (.zip). Qo'lda ishga tushiring: Actions -> FURQON Windows -> Run workflow.
+on:
+  workflow_dispatch: {}
+permissions:
+  contents: read
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+      - run: npm install --no-audit --no-fund
+      - name: Veb qismini yig'ish
+        shell: bash
+        run: WEB_VERSION=${{ github.run_number }} bash scripts/build.sh
+      - name: Desktop qobig'i
+        shell: bash
+        run: |
+          rm -rf desktop/web && mkdir -p desktop/web && cp -r dist/. desktop/web/
+          echo "{ \"updateUrl\": \"https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}\" }" > desktop/config.json
+          cd desktop && npm install --no-audit --no-fund && npx electron-builder --win nsis zip --x64
+      - uses: actions/upload-artifact@v4
+        with:
+          name: furqon-windows
+          path: |
+            desktop/dist-win/*.exe
+            desktop/dist-win/*.zip

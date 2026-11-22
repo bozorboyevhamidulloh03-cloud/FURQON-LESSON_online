@@ -7,3 +7,6 @@ android/.gradle/
 *.jks
 *.keystore
 local.properties
+desktop/node_modules/
+desktop/dist-win/
+desktop/web/

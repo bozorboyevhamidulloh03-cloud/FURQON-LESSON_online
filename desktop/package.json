@@ -1,0 +1,86 @@
+{
+  "name": "furqon-desktop",
+  "productName": "FURQON Online",
+  "version": "1.0.0",
+  "description": "FURQON Online — Windows 10/11 ilovasi",
+  "author": "FURQON",
+  "main": "main.js",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win --x64",
+    "dist:zip": "electron-builder --win zip --x64"
+  },
+  "devDependencies": {
+    "electron": "^45.4.1",
+    "electron-builder": "^26.18.0",
+    "resedit": "^3.1.1"
+  },
+  "dependencies": {
+    "adm-zip": "^0.6.1"
+  },
+  "build": {
+    "appId": "uz.fur.platform.desktop",
+    "productName": "FURQON Online",
+    "copyright": "FURQON",
+    "directories": {
+      "output": "dist-win",
+      "buildResources": "build"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "ota.js",
+      "config.json",
+      "package.json",
+      "build/icon.ico",
+      "web/**/*"
+    ],
+    "asar": true,
+    "afterPack": "./afterPack.js",
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.ico",
+      "signAndEditExecutable": false,
+      "artifactName": "FURQON-Online-${version}-${arch}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "FURQON Online",
+      "deleteAppDataOnUninstall": false,
+      "artifactName": "FURQON-Online-Setup-${version}.${ext}"
+    },
+    "fileAssociations": [
+      {
+        "ext": "fur",
+        "name": "FURQON dars fayli",
+        "description": "FURQON dars fayli (.fur)",
+        "icon": "build/fur.ico",
+        "role": "Editor"
+      }
+    ],
+    "extraFiles": [
+      {
+        "from": "install",
+        "to": "."
+      }
+    ]
+  }
+}

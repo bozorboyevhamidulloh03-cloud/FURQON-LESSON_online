@@ -3,7 +3,9 @@ import { mountPageGrid, GridHandle } from './pagegrid';
 import { mountEditor, EditorHandle } from './editor';
 import { mountBoard, BoardHandle } from './board';
 import { startPresentation } from './present';
-import { startTeacher, joinClass, TeacherSession } from './classroom';
+import { startTeacher, joinClass, probeLive, TeacherSession } from './classroom';
+import { getLive, saveLive, touchLive, clearLive } from './livestate';
+import { RecItem, saveRecording, listRecordings, deleteRecording, recSource, shareRecording, recWhere, phoneRecs, shareLabel } from './recstore';
 import { startRecorder, recSupported, Rec } from './recorder';
 import { makeFrames, FrameCtl } from './recframe';
 import { PresentHandle } from './present';
@@ -13,15 +15,16 @@ import * as db from './db';
 import { initTheme, getSettings, setSettings, ACCENTS, effectiveMode, Settings } from './theme';
 import type { DocMeta, Folder } from './db';
 
-type Section = 'all' | 'recent' | 'fav' | 'trash';
+type Section = 'all' | 'recent' | 'fav' | 'trash' | 'rec';
 type Sort = 'modified' | 'name' | 'size';
 interface Session { meta: DocMeta; doc: FurDocument; status: 'saved' | 'dirty' | 'saving' | 'error'; savedAt: number; recT: number; saveT: number; recovery: { savedAt: number; data: Uint8Array } | null }
 const S = { section: 'all' as Section, folderId: null as string | null, q: '', sort: 'modified' as Sort, metas: [] as DocMeta[], folders: [] as Folder[],
-  view: 'home' as 'home' | 'doc' | 'edit', pageIdx: 0, editor: null as EditorHandle | null, grid: null as GridHandle | null, pview: ((): 'grid' | 'list' => { try { return localStorage.getItem('fur.pview') === 'list' ? 'list' : 'grid'; } catch { return 'grid'; } })(), ses: null as Session | null, menu: null as string | null, est: null as { usage: number; quota: number } | null, err: '' };
+  view: 'home' as 'home' | 'doc' | 'edit', pageIdx: 0, editor: null as EditorHandle | null, grid: null as GridHandle | null, pview: ((): 'grid' | 'list' => { try { return localStorage.getItem('fur.pview') === 'list' ? 'list' : 'grid'; } catch { return 'grid'; } })(), ses: null as Session | null, menu: null as string | null, est: null as { usage: number; quota: number } | null, err: '', recs: [] as RecItem[], sel: null as Set<string> | null };
 const root = document.getElementById('app')!;
 const esc = (s: string) => s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!));
 const I = (d: string) => `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
 const IC = {
+  vid: I('<rect x="3" y="6" width="13" height="12" rx="2"/><path d="M16 10l5-3v10l-5-3"/>'), share: I('<circle cx="6" cy="12" r="2.2"/><circle cx="18" cy="6" r="2.2"/><circle cx="18" cy="18" r="2.2"/><path d="M8 11l8-4M8 13l8 4"/>'),
   refresh: I('<path d="M20 11a8 8 0 10-2.3 5.7"/><path d="M20 4v7h-7"/>'),
   live: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="2.5"/><path d="M7.5 7.5a6.4 6.4 0 000 9M16.5 7.5a6.4 6.4 0 010 9M4.5 4.5a10.6 10.6 0 000 15M19.5 4.5a10.6 10.6 0 010 15"/></svg>',
   play: '<svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true"><path d="M7 4l13 8-13 8z"/></svg>',
@@ -119,6 +122,12 @@ function download(bytes: Uint8Array, name: string, ext = '.fur', mime = 'applica
   const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([bytes as unknown as BlobPart], { type: mime }));
   a.download = fname; document.body.append(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 3000);
 }
+const sheet = (title: string, items: [string, string, boolean?][]) => modal<string>(`<h3>${esc(title)}</h3><div class="sheetl">${items.map(([k, t, d]) => `<button class="sbtn ${d ? 'dng' : ''}" data-k="${k}">${t}</button>`).join('')}</div><div class="row"><button class="btn" data-k="">Yopish</button></div>`, (b, done) => b.querySelectorAll<HTMLElement>('[data-k]').forEach(x => x.addEventListener('click', () => done(x.dataset.k || null))));
+async function openMenu(id: string) {
+  const m = S.metas.find(x => x.id === id); if (!m) return;
+  const items: [string, string, boolean?][] = m.deletedAt ? [['restore', 'Tiklash'], ['purge', 'Butunlay o‘chirish', true]] : [['open', 'Ochish'], ['rename', 'Nomini o‘zgartirish'], ['dup', 'Nusxa olish'], ['move', 'Papkaga ko‘chirish'], ['export', 'Eksport (.fur)'], ['trash', 'Savatga tashlash'], ['purge', 'Butunlay o‘chirish', true]];
+  const k = await sheet(m.title, items); if (k) await menuAction(k, id);
+}
 async function menuAction(act: string, id: string) {
   const m = S.metas.find(x => x.id === id); if (!m) return; S.menu = null;
   if (act === 'open') return openDoc(id);
@@ -127,9 +136,9 @@ async function menuAction(act: string, id: string) {
   else if (act === 'dup') { const r = await parseFur((await db.getBlob(id))!); r.doc.title = m.title + ' (nusxa)'; const nm = await storeNew(r.doc); await db.putMeta({ ...nm, folderId: m.folderId }); toast('Nusxa yaratildi'); }
   else if (act === 'move') { const f = await pickFolder(); if (f === null) return render(); await db.putMeta({ ...m, folderId: f || null }); }
   else if (act === 'export') { download((await db.getBlob(id))!, m.title); toast('Eksport qilindi: ' + m.title + '.fur'); return render(); }
-  else if (act === 'trash') { await db.putMeta({ ...m, deletedAt: Date.now() }); toast('"' + m.title + '" o‘chirilganlarga ko‘chirildi'); }
+  else if (act === 'trash') { await db.putMeta({ ...m, deletedAt: Date.now() }); toast('"' + m.title + '" savatga tashlandi'); }
   else if (act === 'restore') { await db.putMeta({ ...m, deletedAt: null }); }
-  else if (act === 'purge') { if (!(await confirmBox('Butunlay o‘chirish', `"${m.title}" qayta tiklanmaydi.`, 'Butunlay o‘chirish'))) return render(); await db.deleteDoc(id); }
+  else if (act === 'purge') { if (!(await confirmBox('Butunlay o‘chirish', `"${m.title}" qayta tiklanmaydi.`, 'Butunlay o‘chirish'))) return render(); await db.deleteDoc(id); toast('"' + m.title + '" butunlay o‘chirildi'); }
   await refresh(); render();
 }
 
@@ -194,10 +203,9 @@ function visibleDocs(): DocMeta[] {
   return l;
 }
 function card(m: DocMeta): string {
-  const trash = S.section === 'trash', items = trash ? [['restore', 'Tiklash'], ['purge', 'Butunlay o‘chirish']] : [['open', 'Ochish'], ['rename', 'Nomini o‘zgartirish'], ['dup', 'Nusxa olish'], ['move', 'Papkaga ko‘chirish'], ['export', 'Eksport (.fur)'], ['trash', 'O‘chirish']];
-  return `<article class="card" data-id="${m.id}" tabindex="0"><div class="thumb">${thumb(m)}<img class="fbadge" src="fur-file.svg" alt=".fur" width="34" height="34"></div><div class="cinfo"><h3 title="${esc(m.title)}">${esc(m.title)}</h3><p>${m.pages} sahifa · ${fmtSize(m.size)}</p><p class="mut">${trash ? 'O‘chirilgan: ' + ago(m.deletedAt!) : ago(m.modified)}</p></div>
-  ${trash ? '' : `<button class="ib star ${m.favorite ? 'on' : ''}" data-act="fav" aria-label="Sevimli">${IC.star}</button>`}<button class="ib more" data-act="menu" aria-label="Amallar">${IC.more}</button>
-  ${S.menu === m.id ? `<div class="menu">${items.map(([a, t]) => `<button data-act="m:${a}" class="${a === 'trash' || a === 'purge' ? 'dng' : ''}">${t}</button>`).join('')}</div>` : ''}</article>`;
+  const trash = S.section === 'trash', on = !!S.sel?.has(m.id);
+  return `<article class="card ${on ? 'sel' : ''}" data-id="${m.id}" tabindex="0"><div class="thumb">${thumb(m)}<img class="fbadge" src="fur-file.svg" alt=".fur" width="34" height="34">${S.sel ? `<span class="chk ${on ? 'on' : ''}"></span>` : ''}</div><div class="cinfo"><h3 title="${esc(m.title)}">${esc(m.title)}</h3><p>${m.pages} sahifa · ${fmtSize(m.size)}</p><p class="mut">${trash ? 'O‘chirilgan: ' + ago(m.deletedAt!) : ago(m.modified)}</p></div>
+  ${trash ? '' : `<button class="ib star ${m.favorite ? 'on' : ''}" data-act="fav" aria-label="Sevimli">${IC.star}</button>`}<button class="ib more" data-act="menu" aria-label="Amallar">${IC.more}</button></article>`;
 }
 function home(): string {
   const live = S.metas.filter(m => !m.deletedAt), trashN = S.metas.length - live.length, favN = live.filter(m => m.favorite).length;
@@ -205,22 +213,111 @@ function home(): string {
   const docs = visibleDocs(), showFolders = S.section === 'all' && !S.q ? S.folders.filter(f => f.parentId === S.folderId) : [];
   const crumbs: Folder[] = []; for (let f = S.folders.find(x => x.id === S.folderId); f; f = S.folders.find(x => x.id === f!.parentId)) crumbs.unshift(f);
   const est = S.est, pct = est && est.quota ? Math.max(1, Math.min(100, Math.round(est.usage / est.quota * 100))) : 0;
-  const titles: Record<Section, string> = { all: 'Barcha darslar', recent: 'So‘nggi ochilganlar', fav: 'Sevimlilar', trash: 'O‘chirilganlar' };
+  const titles: Record<Section, string> = { all: 'Barcha darslar', recent: 'So‘nggi ochilganlar', fav: 'Sevimlilar', trash: 'O‘chirilganlar', rec: 'Dars yozuvlari' };
   const empty = S.q ? `<div class="empty"><h2>Hech narsa topilmadi</h2><p>"${esc(S.q)}" bo‘yicha darslar yo‘q.</p></div>`
     : S.section === 'trash' ? `<div class="empty"><h2>Savat bo‘sh</h2><p>O‘chirilgan darslar shu yerda turadi va tiklanishi mumkin.</p></div>`
     : S.section === 'fav' ? `<div class="empty"><h2>Sevimlilar yo‘q</h2><p>Dars kartochkasidagi yulduzchani bosing.</p></div>`
     : `<div class="empty"><svg viewBox="0 0 120 90" width="120" aria-hidden="true"><rect x="22" y="14" width="64" height="66" rx="8" fill="var(--card)" stroke="var(--line)"/><rect x="34" y="6" width="64" height="66" rx="8" fill="var(--card)" stroke="var(--line)"/><path d="M46 30h40M46 42h40M46 54h24" stroke="var(--accent)" stroke-width="3" stroke-linecap="round"/></svg><h2>Birinchi darsingizni yarating</h2><p>Hujjat va doskadan iborat dars bitta .fur faylda saqlanadi. Hammasi shu qurilmada, akkauntsiz.</p></div>`;
   return `<div class="shell"><aside class="side"><div class="brand"><img class="logoimg" src="icon-96.png" alt="" width="34" height="34"><b>FURQON</b><small>Online</small></div>
-  <nav>${nav('all', IC.home, 'Darslar', live.length)}${nav('recent', IC.clock, 'So‘nggi')}${nav('fav', IC.star, 'Sevimlilar', favN)}${nav('trash', IC.trash, 'O‘chirilganlar', trashN)}</nav>
+  <nav>${nav('all', IC.home, 'Darslar', live.length)}${nav('recent', IC.clock, 'So‘nggi')}${nav('fav', IC.star, 'Sevimlilar', favN)}${nav('rec', IC.vid, 'Yozuvlar', S.recs.length)}${nav('trash', IC.trash, 'O‘chirilganlar', trashN)}</nav>
   <div class="grow"></div><div class="stor"><div class="bar"><i style="width:${pct}%"></i></div><small>${est ? `${fmtSize(est.usage)} ishlatilgan` : 'Xotira'}${est?.quota ? ` · ${fmtSize(est.quota)} dan` : ''}</small></div>
   <button class="nav" data-act="theme">${IC.moon}<span>${effectiveMode() === 'dark' ? 'Yorug‘ rejim' : 'Qorong‘i rejim'}</span></button><button class="nav" data-act="settings">${IC.gear}<span>Sozlamalar</span></button><button class="nav upd" data-act="update" title="${esc(updTitle())}">${IC.refresh}<span>Yangilanishni tekshirish</span></button></aside>
   <main><header class="top"><label class="search">${IC.search}<input id="q" placeholder="Darslarni qidirish" value="${esc(S.q)}"></label>
-  <select id="sort" aria-label="Saralash"><option value="modified" ${S.sort === 'modified' ? 'selected' : ''}>Oxirgi o‘zgarish</option><option value="name" ${S.sort === 'name' ? 'selected' : ''}>Nomi bo‘yicha</option><option value="size" ${S.sort === 'size' ? 'selected' : ''}>Hajmi bo‘yicha</option></select>
+  <select id="sort" aria-label="Saralash"><option value="modified" ${S.sort === 'modified' ? 'selected' : ''}>Oxirgi o‘zgarish</option><option value="name" ${S.sort === 'name' ? 'selected' : ''}>Nomi bo‘yicha</option><option value="size" ${S.sort === 'size' ? 'selected' : ''}>Hajmi bo‘yicha</option></select>${S.section === 'trash' && trashN ? '<button class="btn dng" data-act="emptytrash">Savatni bo‘shatish</button>' : ''}${S.section === 'rec' ? (S.recs.length ? `<button class="btn ${S.sel ? 'pri' : ''}" data-act="seltoggle">${S.sel ? 'Bekor' : 'Tanlash'}</button>` : '') : (docs.length ? `<button class="btn ${S.sel ? 'pri' : ''}" data-act="seltoggle">${S.sel ? 'Bekor' : 'Tanlash'}</button>` : '')}
   </header>
-  <section class="content">${S.section === 'all' && !S.q && !S.folderId ? dash(live.length, favN, est?.usage ?? 0) : S.section === 'all' && !S.q ? qaRow() : ''}<div class="crumb">${S.section === 'all' && !S.q ? `<button data-folder="">Darslar</button>${crumbs.map(c => `<span>/</span><button data-folder="${c.id}">${esc(c.name)}</button>`).join('')}` : `<b>${S.q ? 'Qidiruv natijalari' : titles[S.section]}</b>`}</div>
+  <section class="content">${liveCardHtml()}${S.section === 'all' && !S.q && !S.folderId ? dash(live.length, favN, est?.usage ?? 0) : S.section === 'all' && !S.q ? qaRow() : ''}<div class="crumb">${S.section === 'all' && !S.q ? `<button data-folder="">Darslar</button>${crumbs.map(c => `<span>/</span><button data-folder="${c.id}">${esc(c.name)}</button>`).join('')}` : `<b>${S.q ? 'Qidiruv natijalari' : titles[S.section]}</b>`}</div>
   ${showFolders.length ? `<div class="folders">${showFolders.map(f => `<button class="fold" data-folder="${f.id}">${IC.folder}<span>${esc(f.name)}</span><em>${S.metas.filter(m => m.folderId === f.id && !m.deletedAt).length}</em></button>`).join('')}</div>` : ''}
-  ${docs.length ? `<div class="grid">${docs.map(card).join('')}</div>` : showFolders.length ? '' : empty}</section></main></div>`;
+  ${S.section === 'rec' ? recSection() : docs.length ? `<div class="grid">${docs.map(card).join('')}</div>` : showFolders.length ? '' : empty}</section></main></div>${selBar()}`;
 }
+// ---------- tanlash va ko‘plab o‘chirish ----------
+function selBar(): string {
+  if (!S.sel) return ''; const n = S.sel.size, rec = S.section === 'rec', trash = S.section === 'trash';
+  const b = (a: string, t: string, c = '') => `<button class="btn ${c}" data-act="${a}" ${n ? '' : 'disabled'}>${t}</button>`;
+  return `<div class="selbar"><b>${n} ta tanlandi</b><button class="btn" data-act="selall">Hammasi</button>${rec ? b('bulk:recdel', 'O‘chirish', 'dng') : trash ? b('bulk:restore', 'Tiklash') + b('bulk:purge', 'Butunlay o‘chirish', 'dng') : b('bulk:trash', 'Savatga') + b('bulk:purge', 'Butunlay o‘chirish', 'dng')}<button class="btn" data-act="selcancel">Bekor</button></div>`;
+}
+function keepScroll(fn: () => void) { const c = document.querySelector('.content'), y = window.scrollY, t = c?.scrollTop ?? 0; fn(); const c2 = document.querySelector('.content'); if (c2) c2.scrollTop = t; window.scrollTo(0, y); }
+const recList = () => { const q = S.q.trim().toLowerCase(); return S.recs.filter(r => !q || r.title.toLowerCase().includes(q)); };
+async function bulk(act: string) {
+  const ids = [...(S.sel ?? [])]; if (!ids.length) return;
+  if (act === 'purge') { if (!(await confirmBox('Butunlay o‘chirish', `${ids.length} ta dars qayta tiklanmaydi.`, 'Butunlay o‘chirish'))) return; for (const id of ids) await db.deleteDoc(id); toast(`${ids.length} ta dars butunlay o‘chirildi`); }
+  else if (act === 'trash') { for (const id of ids) { const m = S.metas.find(x => x.id === id); if (m) await db.putMeta({ ...m, deletedAt: Date.now() }); } toast(`${ids.length} ta dars savatga tashlandi`); }
+  else if (act === 'restore') { for (const id of ids) { const m = S.metas.find(x => x.id === id); if (m) await db.putMeta({ ...m, deletedAt: null }); } toast(`${ids.length} ta dars tiklandi`); }
+  else if (act === 'recdel') {
+    if (!(await confirmBox('Yozuvlarni o‘chirish', `${ids.length} ta yozuv ${phoneRecs() ? 'telefondan' : 'xotiradan'} butunlay o‘chadi va tiklanmaydi.`, 'Butunlay o‘chirish'))) return;
+    let ok = 0; for (const id of ids) { const it = S.recs.find(x => x.id === id); if (it && (await deleteRecording(it))) ok++; } S.recs = await listRecordings(); toast(`${ok} ta yozuv o‘chirildi — joy bo‘shadi`, ok !== ids.length);
+  }
+  S.sel = null; await refresh(); render();
+}
+async function emptyTrash() {
+  const ids = S.metas.filter(m => m.deletedAt).map(m => m.id); if (!ids.length) return;
+  if (!(await confirmBox('Savatni bo‘shatish', `${ids.length} ta dars butunlay o‘chadi va tiklanmaydi.`, 'Bo‘shatish'))) return;
+  for (const id of ids) await db.deleteDoc(id); toast('Savat bo‘shatildi'); await refresh(); render();
+}
+
+// ---------- dars yozuvlari ----------
+const MON = ['yan', 'fev', 'mar', 'apr', 'may', 'iyn', 'iyl', 'avg', 'sen', 'okt', 'noy', 'dek'];
+const fmtDate = (t: number) => { const d = new Date(t), z = (n: number) => String(n).padStart(2, '0'); return `${d.getDate()}-${MON[d.getMonth()]}, ${z(d.getHours())}:${z(d.getMinutes())}`; };
+function recSection(): string {
+  const list = recList(), total = S.recs.reduce((a, r) => a + r.size, 0), q = S.q.trim();
+  const head = `<div class="recbar"><b>${S.recs.length} ta yozuv · ${fmtSize(total)}</b><small class="mut">Saqlanadigan joy: ${esc(recWhere())}</small></div>`;
+  if (!list.length) return head + `<div class="empty"><h2>${q ? 'Hech narsa topilmadi' : 'Hali yozuv yo‘q'}</h2><p>Jonli dars yoki taqdimot paytida ● tugmasi bilan yozib oling. Yozuv tugagach avtomatik ${phoneRecs() ? 'telefonning “' + esc(recWhere()) + '” papkasiga' : 'brauzer xotirasiga'} saqlanadi va shu yerda ko‘rinadi.</p></div>`;
+  return head + `<div class="reclist">${list.map(r => { const on = !!S.sel?.has(r.id); return `<article class="rrow ${on ? 'sel' : ''}" data-rid="${esc(r.id)}" tabindex="0">${S.sel ? `<span class="chk ${on ? 'on' : ''}"></span>` : ''}<div class="rthumb">${IC.play}</div><div class="rinf"><h3 title="${esc(r.title)}">${esc(r.title)}</h3><p>${fmtDate(r.created)} · ${r.ms ? fmtDur(r.ms) + ' · ' : ''}${fmtSize(r.size)}</p></div><button class="ib" data-act="rshare" aria-label="${shareLabel()}" title="${shareLabel()}">${IC.share}</button><button class="ib dng" data-act="rdel" aria-label="O‘chirish" title="Telefondan butunlay o‘chirish">${IC.trash}</button></article>`; }).join('')}</div>`;
+}
+async function refreshRecs() { try { S.recs = await listRecordings(); } catch { /* */ } if (S.view === 'home') keepScroll(render); }
+async function delRec(it: RecItem): Promise<void> {
+  if (!(await confirmBox('Yozuvni o‘chirish', `“${it.title}” ${it.src === 'phone' ? 'telefondan' : 'brauzer xotirasidan'} butunlay o‘chiriladi va tiklanmaydi.`, 'Butunlay o‘chirish'))) return;
+  const ok = await deleteRecording(it); S.recs = await listRecordings(); toast(ok ? `Yozuv o‘chirildi (${fmtSize(it.size)} bo‘shadi)` : 'O‘chirib bo‘lmadi', !ok); if (S.view === 'home') keepScroll(render);
+}
+async function playRec(id: string) {
+  const it = S.recs.find(x => x.id === id); if (!it) return; let src: { url: string; revoke(): void };
+  try { src = await recSource(it); } catch (e) { return void toast((e as Error).message, true); }
+  const sp = [0.5, 0.75, 1, 1.25, 1.5, 2];
+  const r = await modal<string>(`<h3 class="rtitle" title="${esc(it.title)}">${esc(it.title)}</h3><video class="recvid" controls playsinline preload="metadata" src="${esc(src.url)}"></video><div class="speeds"><button class="chip" data-sk="-10">⟲ 10s</button>${sp.map(x => `<button class="chip ${x === 1 ? 'on' : ''}" data-sp="${x}">${x}×</button>`).join('')}<button class="chip" data-sk="10">10s ⟳</button></div><p class="mut small">${fmtDate(it.created)} · ${it.ms ? fmtDur(it.ms) + ' · ' : ''}${fmtSize(it.size)}</p><div class="row"><button class="btn" data-x="share">${shareLabel()}</button><button class="btn dng" data-x="del">O‘chirish</button><button class="btn pri" data-x="close">Yopish</button></div>`, (b, done) => {
+    const v = b.querySelector('video')!;
+    // MediaRecorder yozuvlarida davomiylik sarlavhada bo‘lmaydi — surish ishlashi uchun bir marta oxirigacha “o‘tkazib” olamiz
+    v.addEventListener('loadedmetadata', () => { if (!isFinite(v.duration)) { const back = () => { v.removeEventListener('timeupdate', back); v.currentTime = 0; }; v.addEventListener('timeupdate', back); v.currentTime = 1e101; } });
+    v.addEventListener('error', () => toast('Videoni ochib bo‘lmadi', true));
+    b.querySelectorAll<HTMLElement>('[data-sp]').forEach(x => x.addEventListener('click', () => { v.playbackRate = Number(x.dataset.sp); b.querySelectorAll('[data-sp]').forEach(y => y.classList.toggle('on', y === x)); }));
+    b.querySelectorAll<HTMLElement>('[data-sk]').forEach(x => x.addEventListener('click', () => { v.currentTime = Math.max(0, v.currentTime + Number(x.dataset.sk)); }));
+    b.querySelector('[data-x="share"]')!.addEventListener('click', () => void shareRecording(it));
+    b.querySelector('[data-x="del"]')!.addEventListener('click', () => done('del')); b.querySelector('[data-x="close"]')!.addEventListener('click', () => done(null));
+  });
+  src.revoke(); if (r === 'del') await delRec(it);
+}
+
+// ---------- “Efirga qaytish” kartasi ----------
+let liveSt: 'checking' | 'live' | 'none' | null = null, liveProbeAt = 0, probing = false, inClass = false;
+function liveCardHtml(): string {
+  if (S.view !== 'home') return ''; const sv = getLive(); if (!sv || live || inClass) return '';
+  const teacher = sv.role === 'teacher', st = teacher ? 'Siz o‘tkazayotgan efir' : liveSt === 'live' ? 'Efir davom etmoqda' : liveSt === 'none' ? 'Efir tugagan bo‘lishi mumkin' : 'Efir tekshirilmoqda…';
+  return `<div class="livecard ${teacher || liveSt === 'live' ? 'on' : ''}"><i class="pulse"></i><div class="lcinf"><b>${st}</b><small>${esc(sv.title || 'Jonli dars')}${sv.name && !teacher ? ' · ' + esc(sv.name) : ''}</small></div><button class="btn pri" data-act="resumelive">${teacher ? 'Davom ettirish' : 'Qo‘shilish'}</button><button class="ib" data-act="dismisslive" aria-label="Yopish" title="Kartani yopish">✕</button></div>`;
+}
+async function probeSaved(force = false) {
+  const sv = getLive(); if (!sv || sv.role !== 'student' || inClass || probing || S.view !== 'home' || document.hidden) return;
+  if (!force && Date.now() - liveProbeAt < 20000) return;
+  probing = true; liveProbeAt = Date.now(); if (!liveSt) { liveSt = 'checking'; keepScroll(render); }
+  const r = await probeLive(sv.code, sv.srv).catch(() => 'none' as const); probing = false;
+  if (r === 'ended') { clearLive(); liveSt = null; } else liveSt = r;
+  if (S.view === 'home') keepScroll(render);
+}
+async function resumeLive() {
+  const sv = getLive(); if (!sv) return;
+  if (sv.role === 'student') {
+    let nm = sv.name || ''; try { nm = nm || localStorage.getItem('fur.name') || ''; } catch { /* */ }
+    try { setCustomBroker(sv.srv ?? ''); inClass = true; await joinClass(sv.code, nm || 'O‘quvchi', why => { inClass = false; if (why !== 'exit') toast(why); render(); void probeSaved(true); }); render(); }
+    catch (e) { inClass = false; toast('Qo‘shilib bo‘lmadi: ' + (e as Error).message, true); render(); }
+  } else {
+    if (!sv.docId || !S.metas.some(m => m.id === sv.docId && !m.deletedAt)) { clearLive(); render(); return void toast('Efir hujjati topilmadi', true); }
+    try { await openDoc(sv.docId); setCustomBroker(sv.srv ?? ''); live = await beginTeacher(sv.code); updatePill(); toast('Efir davom ettirildi — o‘quvchilar avtomatik qaytadi'); }
+    catch (e) { live = null; toast('Efirni davom ettirib bo‘lmadi: ' + (e as Error).message, true); }
+  }
+}
+async function beginTeacher(resume?: string): Promise<TeacherSession> {
+  const L = await startTeacher(() => S.ses?.doc ?? null, () => (S.view === 'edit' ? S.pageIdx : 0), refreshRoster, n => toast(`✋ ${n} qo‘l ko‘tardi`), i => { if (S.view === 'edit' && S.pageIdx === i) (S.editor as unknown as BoardHandle | null)?.refresh?.(); }, resume);
+  if (S.ses) saveLive({ role: 'teacher', code: L.code, docId: S.ses.meta.id, title: S.ses.doc.title, srv: customBroker() });
+  return L;
+}
+
 function qaRow(): string {
   return `<div class="qa"><button data-act="new"><i>${IC.doc}</i><b>Yangi dars</b><small>Hujjat + doska</small></button><button data-act="join"><i>${IC.live}</i><b>Darsga qo‘shilish</b><small>Kod bilan kirish</small></button><button data-act="import"><i>${IC.upload}</i><b>Import</b><small>.fur · PDF · DOCX · rasm</small></button><button data-act="newfolder"><i>${IC.folder}</i><b>Yangi papka</b><small>Darslarni tartiblash</small></button></div>`;
 }
@@ -323,7 +420,7 @@ function recDialogUi() {
   const ck = document.getElementById('recst') as HTMLInputElement | null; if (ck) ck.checked = RM.students;
   if (live) { for (const k of ['mic', 'cam'] as const) { const b = document.querySelector<HTMLElement>(`[data-m=${k}]`); if (b) { const on = k === 'mic' ? live.media.mic() : live.media.cam(); b.classList.toggle('on', on); b.setAttribute('aria-pressed', String(on)); const sm = b.querySelector('small'); if (sm) sm.textContent = on ? 'Yoqilgan' : 'O‘chiq'; } } }
 }
-function endLive() { live?.end(); live = null; updatePill(); toast('Jonli dars tugatildi'); if (RM.rec) void recStop(); }
+function endLive() { live?.end(); live = null; clearLive(); liveSt = null; updatePill(); toast('Jonli dars tugatildi'); if (RM.rec) void recStop(); }
 async function liveDialog() {
   if (!live) {
     let srvVal = '', autoRec = false;
@@ -334,7 +431,7 @@ async function liveDialog() {
     const srv = srvVal;
     try {
       setCustomBroker((srv ?? '').trim());
-      live = await startTeacher(() => S.ses?.doc ?? null, () => (S.view === 'edit' ? S.pageIdx : 0), refreshRoster, n => toast(`✋ ${n} qo‘l ko‘tardi`), i => { if (S.view === 'edit' && S.pageIdx === i) (S.editor as unknown as BoardHandle | null)?.refresh?.(); });
+      live = await beginTeacher();
       updatePill(); if (autoRec) void recStart();
     } catch (e) { live = null; return void toast('Jonli dars boshlanmadi: ' + (e as Error).message, true); }
   }
@@ -373,7 +470,7 @@ async function joinDialog() {
       try { localStorage.setItem('fur.name', name); } catch { /* */ }
       let codeIn = q('jc').value, srvIn = q('js').value.trim(); const um = codeIn.match(/wss?:\/\/\S+/i); if (um) { srvIn = um[0]; codeIn = codeIn.replace(um[0], ''); } // "kod + server" birga qo'yilsa
       setCustomBroker(srvIn);
-      try { await joinClass(codeIn, name, why => { if (why !== 'exit') toast(why); render(); }); done('ok'); } catch (e) { err.textContent = (e as Error).message; err.classList.add('bad'); }
+      try { inClass = true; await joinClass(codeIn, name, why => { inClass = false; if (why !== 'exit') toast(why); render(); void probeSaved(true); }); done('ok'); } catch (e) { inClass = false; err.textContent = (e as Error).message; err.classList.add('bad'); }
     };
     box.querySelector('[data-v=go]')!.addEventListener('click', () => void go()); q('jc').addEventListener('keydown', e => { if (e.key === 'Enter') void go(); }); q('jc').focus();
   });
@@ -396,8 +493,9 @@ async function recStart() {
 async function recStop() {
   const r = RM.rec; if (!r) return; RM.rec = null; RM.frames = null; clearInterval(RM.tick); recNotify();
   const out = await r.stop(); if (!out.blob.size) return void toast('Yozuv bo‘sh chiqdi', true);
-  const ext = out.mime.includes('mp4') ? 'mp4' : 'webm'; download(new Uint8Array(await out.blob.arrayBuffer()), RM.title + ' — dars yozuvi', '.' + ext, out.mime);
-  toast(`Yozuv saqlandi (${fmtDur(out.ms)}, ${(out.blob.size / 1048576).toFixed(1)} MB)`);
+  toast('Yozuv saqlanmoqda…');
+  try { const it = await saveRecording(out.blob, RM.title, out.ms); S.recs = await listRecordings(); toast(`Yozuv saqlandi (${fmtDur(out.ms)}, ${fmtSize(it.size)}) → ${recWhere()}`); if (S.view === 'home') keepScroll(render); }
+  catch (e) { const ext = out.mime.includes('mp4') ? 'mp4' : 'webm'; download(new Uint8Array(await out.blob.arrayBuffer()), RM.title + ' — dars yozuvi', '.' + ext, out.mime); toast((e as Error).message + ' — yozuv faylga yuklab olindi', true); }
 }
 function recPause() { const r = RM.rec; if (!r) return; if (r.paused()) { r.resume(); toast('Yozish davom etmoqda'); } else { r.pause(); toast('Yozish pauzada'); } recNotify(); }
 const recToggle = () => RM.rec ? void recStop() : void recStart();
@@ -435,12 +533,22 @@ root.addEventListener('click', async e => {
   const t = e.target as HTMLElement;
   const op = t.closest<HTMLElement>('[data-open]'); if (op && S.ses && !t.closest('[data-sa]')) return openPage(Number(op.dataset.open));
   const sa = t.closest<HTMLElement>('[data-sa]'); if (sa) { const [a, arg] = sa.dataset.sa!.split(':'); return void sesAction(a, arg); }
-  const nav = t.closest<HTMLElement>('[data-nav]'); if (nav) { S.section = nav.dataset.nav as Section; S.q = ''; S.folderId = null; S.menu = null; return render(); }
+  const nav = t.closest<HTMLElement>('[data-nav]'); if (nav) { S.section = nav.dataset.nav as Section; S.q = ''; S.folderId = null; S.menu = null; S.sel = null; if (S.section === 'rec') void refreshRecs(); return render(); }
+  const rr = t.closest<HTMLElement>('[data-rid]');
+  if (rr && !t.closest('[data-act]')) { const id = rr.dataset.rid!; if (S.sel) { if (S.sel.has(id)) S.sel.delete(id); else S.sel.add(id); return keepScroll(render); } return void playRec(id); }
   const fo = t.closest<HTMLElement>('[data-folder]'); if (fo) { S.folderId = fo.dataset.folder || null; S.menu = null; return render(); }
   const actEl = t.closest<HTMLElement>('[data-act]'), card = t.closest<HTMLElement>('.card');
   if (actEl) {
     const a = actEl.dataset.act!, id = card?.dataset.id;
-    if (a === 'menu') { S.menu = S.menu === id ? null : id!; return render(); }
+    if (a === 'menu') return void openMenu(id!);
+    if (a === 'rshare' || a === 'rdel') { const it = S.recs.find(x => x.id === t.closest<HTMLElement>('[data-rid]')?.dataset.rid); if (!it) return; return void (a === 'rshare' ? shareRecording(it) : delRec(it)); }
+    if (a === 'seltoggle') { S.sel = S.sel ? null : new Set(); return render(); }
+    if (a === 'selcancel') { S.sel = null; return render(); }
+    if (a === 'selall') { const ids = S.section === 'rec' ? recList().map(r => r.id) : visibleDocs().map(m => m.id); S.sel = S.sel && S.sel.size === ids.length ? new Set() : new Set(ids); return keepScroll(render); }
+    if (a.startsWith('bulk:')) return void bulk(a.slice(5));
+    if (a === 'emptytrash') return void emptyTrash();
+    if (a === 'resumelive') return void resumeLive();
+    if (a === 'dismisslive') { clearLive(); liveSt = null; return render(); }
     if (a.startsWith('m:')) return void menuAction(a.slice(2), id!);
     if (a === 'fav') return void menuAction('fav', id!);
     if (a === 'new') return void createDoc(); if (a === 'newfolder') return void createFolder();
@@ -455,6 +563,7 @@ root.addEventListener('click', async e => {
     if (a === 'theme') { toggleTheme(); return render(); }
     if (a === 'settings') return settingsDialog();
   }
+  if (card && S.sel) { const id = card.dataset.id!; if (S.sel.has(id)) S.sel.delete(id); else S.sel.add(id); return keepScroll(render); }
   if (card && S.section !== 'trash') return void openDoc(card.dataset.id!);
   if (S.menu) { S.menu = null; render(); }
 });
@@ -467,14 +576,16 @@ root.addEventListener('change', e => { const t = e.target as HTMLSelectElement; 
 document.getElementById('file')!.addEventListener('change', e => { const i = e.target as HTMLInputElement; if (i.files?.length) void importFiles(i.files); i.value = ''; });
 window.addEventListener('dragover', e => e.preventDefault());
 window.addEventListener('drop', e => { e.preventDefault(); if (e.dataTransfer?.files.length) void importFiles(e.dataTransfer.files); });
+document.addEventListener('visibilitychange', () => { if (!document.hidden) { void probeSaved(); void refreshRecs(); } });
 window.addEventListener('visibilitychange', () => { if (document.hidden && S.ses && S.ses.status !== 'saved') void persist(); });
 
 function toggleTheme() { setSettings({ mode: effectiveMode() === 'dark' ? 'light' : 'dark' }); }
 let incBusy = false, incWanted = false, appReady = false;
 initTheme();
 if ('serviceWorker' in navigator && location.protocol.startsWith('http') && !native()) navigator.serviceWorker.register('sw.js').catch(() => {});
-(async () => { try { await refresh(); } catch { S.err = 'Brauzer xotirasi (IndexedDB) mavjud emas'; } render(); if (S.err) toast(S.err, true); appReady = true; void checkIncoming(); })();
-(window as any).__fur = { S, openDoc, refresh, render };
+(async () => { try { await refresh(); } catch { S.err = 'Brauzer xotirasi (IndexedDB) mavjud emas'; } render(); if (S.err) toast(S.err, true); appReady = true; void checkIncoming(); void refreshRecs(); void probeSaved(true); })();
+setInterval(() => { if (document.hidden) return; if (live) touchLive(); else void probeSaved(); }, 25000);
+(window as any).__fur = { S, openDoc, refresh, render, saveRecording, refreshRecs };
 
 /** "Ochish" (Open with) / "Ulashish" orqali kelgan .fur (va PDF/DOCX/rasm) fayllar: Android qobig'i xotirada ushlab turadi, bu yerda olib import qilinadi va ochiladi. */
 async function checkIncoming() {

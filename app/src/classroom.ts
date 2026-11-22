@@ -3,17 +3,30 @@ import { BROKERS, Room, Msg, b64, unb64, customBroker, newCode, parseCode } from
 import { PresentHandle, PresentHooks, PresBtn, startPresentation } from './present';
 import { Peers, getTrack, rtcSupported } from './rtc';
 import { showTile, dropTile, dropAll } from './mediaui';
+import { saveLive, touchLive, clearLive } from './livestate';
 
 // ---------- ulanish (qayta ulanish bilan) ----------
 interface Link { send(m: Msg): void; close(): void; broker(): string; id(): string }
 async function openLink(code: string, order: string[], onMsg: (m: Msg) => void, onState: (up: boolean) => void): Promise<Link> {
-  let room = await Room.open(code, order), dead = false, trying = false;
-  const wire = (r: Room) => { r.onMsg = onMsg; r.onState = up => { onState(up); if (!up && !dead) retry(); }; };
+  let room = await Room.open(code, order), dead = false, trying = false, lastRx = Date.now();
+  const wire = (r: Room) => { r.onMsg = m => { lastRx = Date.now(); onMsg(m); }; r.onState = up => { onState(up); if (!up && !dead) retry(); }; };
   const retry = async () => { if (trying || dead) return; trying = true; for (let k = 0; !dead; k++) { await new Promise(r => setTimeout(r, Math.min(8000, 1500 + k * 1000))); if (dead) break; try { const r = await Room.open(code, [room.broker, ...order]); room.close(); room = r; wire(r); trying = false; onState(true); return; } catch { /* qayta urinadi */ } } trying = false; };
   wire(room);
-  return { send: m => { void room.send(m); }, close: () => { dead = true; room.close(); }, broker: () => room.broker, id: () => room.id };
+  // Internet "jim-jit" uzilsa (ekran o'chdi, tarmoq almashdi) brauzer ulanish yopilganini bildirmaydi: qaytganda tekshirib, qayta ulaymiz.
+  const kick = () => { if (dead || trying || Date.now() - lastRx < 9000) return; room.close(); room.onState(false); };
+  const onVis = () => { if (document.visibilityState === 'visible') kick(); };
+  window.addEventListener('online', kick); document.addEventListener('visibilitychange', onVis);
+  return { send: m => { void room.send(m); }, close: () => { dead = true; window.removeEventListener('online', kick); document.removeEventListener('visibilitychange', onVis); room.close(); }, broker: () => room.broker, id: () => room.id };
 }
-export const orderFor = (idx: number): string[] => { const c = customBroker(); return idx === 9 ? (c ? [c] : []) : [BROKERS[idx]].filter(Boolean); };
+export const orderFor = (idx: number, srv: string = customBroker()): string[] => idx === 9 ? (srv ? [srv] : []) : [BROKERS[idx]].filter(Boolean);
+/** Saqlangan efir hali davom etayotganini jim tekshiradi (o'zini ro'yxatga qo'shmaydi): 'live' | 'ended' | 'none' (9 soniyada ustoz signali kelmadi). */
+export async function probeLive(codeIn: string, srv?: string): Promise<'live' | 'ended' | 'none'> {
+  const code = parseCode(codeIn); if (!code) return 'ended';
+  return new Promise(res => {
+    let done = false, link: Link | null = null; const fin = (v: 'live' | 'ended' | 'none') => { if (done) return; done = true; clearTimeout(t); link?.close(); res(v); }, t = setTimeout(() => fin('none'), 9000);
+    openLink(code, orderFor(Number(code[0]), srv ?? customBroker()), m => { if (m.k === 'end') fin('ended'); else if (m.k === 'hb' || m.k === 'page') fin('live'); }, () => { }).then(l => { link = l; if (done) l.close(); }, () => fin('none'));
+  });
+}
 
 // ---------- yordamchi ----------
 const assetIds = (p: FurPage): string[] => { const o = new Set<string>(); if (p.type === 'board') p.objects.forEach(x => { if (x.t === 'image') o.add(x.a); }); else p.blocks.forEach(b => { if (b.type === 'image') o.add(b.a); }); return [...o]; };
@@ -26,8 +39,10 @@ export interface TeacherSession {
   code: string; broker: string; roster(): RosterEntry[]; hooks: PresentHooks; media: TeacherMedia; onBtn(b: PresBtn, view: PresentHandle): void;
   focus(i: number, u: number, v: number): void; page(): number; sendPage(i: number): void; touch(i: number): void; end(): void; up(): boolean;
 }
-export async function startTeacher(getDoc: () => FurDocument | null, getIdx: () => number, onRoster: () => void, onHandUp: (n: string) => void, onRemote?: (i: number) => void): Promise<TeacherSession> {
-  const custom = customBroker(), order = custom ? [custom] : BROKERS, body = newCode(0);
+export async function startTeacher(getDoc: () => FurDocument | null, getIdx: () => number, onRoster: () => void, onHandUp: (n: string) => void, onRemote?: (i: number) => void, resumeCode?: string): Promise<TeacherSession> {
+  const custom = customBroker(), rc = resumeCode ? parseCode(resumeCode) : null, ri = rc ? Number(rc[0]) : -1;
+  // Efirni davom ettirishda xuddi shu kod va xuddi shu server ishlatiladi — o'quvchilar o'zlari qaytib ulanadi.
+  const order = rc ? orderFor(ri, custom) : custom ? [custom] : BROKERS, body = rc ? '0' + rc.slice(1) : newCode(0);
   // birinchi ishlagan serverni topamiz (shifr kaliti kod tanasidan olinadi, server raqami kalitga kirmaydi)
   let link: Link | null = null, idx = 9, lastErr = new Error('Server topilmadi'), upNow = true;
   const roster = new Map<string, RosterEntry>(), sentAssets = new Set<string>(), asked = new Map<string, number>(), snaps = new Map<number, Map<string, string>>(), lastDoc = new Map<number, string>();
@@ -128,7 +143,7 @@ export async function joinClass(codeIn: string, name: string, onExit: (why: stri
   const onMsg = (m: Msg) => {
     lastHb = Date.now(); if (!view) return;
     if (m.k === 'page' && m.page && typeof m.i === 'number') {
-      ensure(Math.max(m.n ?? 0, m.i + 1)); doc.pages[m.i] = m.page as FurPage; if (m.layout) doc.layout = m.layout; if (m.title) doc.title = String(m.title); cur = m.i; view.goto(m.i); view.status('● Jonli');
+      ensure(Math.max(m.n ?? 0, m.i + 1)); doc.pages[m.i] = m.page as FurPage; if (m.layout) doc.layout = m.layout; if (m.title) { doc.title = String(m.title); saveLive({ role: 'student', code, title: doc.title }); } cur = m.i; view.goto(m.i); view.status('● Jonli');
       const need = missing(doc.pages[m.i]); if (need.length) link?.send({ k: 'need', ids: need });
     } else if (m.k === 'ops' && typeof m.i === 'number') {
       const p = doc.pages[m.i]; if (!p || p.type !== 'board') return; const del = new Set<string>(m.del ?? []);
@@ -143,9 +158,10 @@ export async function joinClass(codeIn: string, name: string, onExit: (why: stri
     else if (m.k === 'rtc') void rtc?.handle(m);
     else if (m.k === 'perm' && m.to === link?.id()) { allow.mic = !!m.mic; allow.cam = !!m.cam; const wasWr = allow.wr; allow.wr = !!m.wr; view?.setWrite(allow.wr); let ch = false; if (!allow.mic && on.mic) { turnOff('mic'); ch = true; } if (!allow.cam && on.cam) { turnOff('cam'); ch = true; } paintBtns(); if (ch) reportMedia(); note(allow.mic || allow.cam || allow.wr ? 'Ustoz ruxsat berdi: ' + [allow.mic ? 'mikrofon' : '', allow.cam ? 'kamera' : '', allow.wr ? 'doskaga yozish' : ''].filter(Boolean).join(', ') : 'Ruxsatlar olindi', false); void wasWr; }
     else if (m.k === 'tm') { tCam = !!m.cam; teacherTile(); }
-    else if (m.k === 'hb') { if (m.tc !== undefined && !!m.tc !== tCam) { tCam = !!m.tc; teacherTile(); } ensure(m.n ?? 0); if (m.i !== undefined && m.i >= 0 && m.i !== cur) { cur = m.i; view.goto(m.i); } view.status('● Jonli'); }
-    else if (m.k === 'end') { ended = true; view.status('Dars tugadi', true); }
+    else if (m.k === 'hb') { touchLive(); if (m.tc !== undefined && !!m.tc !== tCam) { tCam = !!m.tc; teacherTile(); } ensure(m.n ?? 0); if (m.i !== undefined && m.i >= 0 && m.i !== cur) { cur = m.i; view.goto(m.i); } view.status('● Jonli'); }
+    else if (m.k === 'end') { ended = true; clearLive(); view.status('Dars tugadi', true); }
   };
+  saveLive({ role: 'student', code, name, srv: customBroker() });
   link = await openLink(code, orderFor(Number(code[0])), onMsg, up => { if (!view) return; view.status(up ? '● Jonli' : 'Aloqa uzildi…', !up); if (up) link?.send({ k: 'hello', name, first: true }); });
   const finish = (why: string) => { clearInterval(ti); clearInterval(th); turnOff('mic'); turnOff('cam'); rtc?.closeAll(); dropAll(); if (!ended) link?.send({ k: 'bye' }); setTimeout(() => link?.close(), 300); onExit(why); };
   doc.pages = []; ensure(1);
